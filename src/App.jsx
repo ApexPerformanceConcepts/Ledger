@@ -1,30 +1,88 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
-  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check
+  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
-// 1. PASTE YOUR FIREBASE CONFIG HERE
-const firebaseConfig = {
+// --- FIREBASE SETUP ---
+// Smart config: Uses preview environment if here, or your keys if on Vercel
+const isPreviewEnv = typeof __firebase_config !== 'undefined';
+const firebaseConfig = isPreviewEnv ? JSON.parse(__firebase_config) : {
   apiKey: "AIzaSyAXtaglk0mUuQyknLmyGuT6yoB8a0KYH7g",
   authDomain: "apex-performance-ledger.firebaseapp.com",
   projectId: "apex-performance-ledger",
   storageBucket: "apex-performance-ledger.firebasestorage.app",
   messagingSenderId: "833698468013",
-  appId: "1:833698468013:web:a2665043c9a345afd0f624",
-  measurementId: "G-0NR5S32JGE"
+  appId: "1:833698468013:web:a2665043c9a345afd0f624"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// Smart paths for local vs canvas
+const getColRef = (colName) => isPreviewEnv ? collection(db, 'artifacts', appId, 'public', 'data', colName) : collection(db, colName);
+const getDocRef = (colName, docId) => isPreviewEnv ? doc(db, 'artifacts', appId, 'public', 'data', colName, docId) : doc(db, colName, docId);
+
+// --- HELPER: CSV EXPORT & IMPORT ---
+const exportToCsv = (filename, rows) => {
+  const escapeCsv = (val) => '"' + String(val || '').replace(/"/g, '""') + '"';
+  const csvContent = rows.map(row => row.map(escapeCsv).join(",")).join("\n");
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement("a");
+  if (link.download !== undefined) {
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+};
+
+const parseCSV = (text) => {
+  const rows = [];
+  let currentRow = [];
+  let currentCell = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') {
+          currentCell += '"'; i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        currentCell += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ',') {
+        currentRow.push(currentCell); currentCell = '';
+      } else if (char === '\n' || char === '\r') {
+        currentRow.push(currentCell); rows.push(currentRow);
+        currentRow = []; currentCell = '';
+        if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') i++;
+      } else {
+        currentCell += char;
+      }
+    }
+  }
+  if (currentCell || text[text.length - 1] === ',') currentRow.push(currentCell);
+  if (currentRow.length > 0) rows.push(currentRow);
+  return rows;
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isAuth, setIsAuth] = useState(false);
+  const [user, setUser] = useState(null);
 
   // --- STATE MANAGEMENT ---
   const [revenues, setRevenues] = useState([]);
@@ -39,47 +97,62 @@ export default function App() {
 
   // --- FIREBASE AUTHENTICATION ---
   useEffect(() => {
-    signInAnonymously(auth).then(() => setIsAuth(true)).catch(console.error);
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) { console.error("Auth error:", error); }
+    };
+    initAuth();
+    const unsubscribe = auth.onAuthStateChanged(setUser);
+    return () => unsubscribe();
   }, []);
 
   // --- REALTIME DATA FETCHING ---
   useEffect(() => {
-    if (!isAuth) return;
+    if (!user) return;
     
-    const unsubRevs = onSnapshot(collection(db, 'revenues'), 
+    const unsubRevs = onSnapshot(getColRef('revenues'), 
       (snap) => setRevenues(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
-    const unsubExps = onSnapshot(collection(db, 'expenses'), 
+    const unsubExps = onSnapshot(getColRef('expenses'), 
       (snap) => setExpenses(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
-    const unsubEqs = onSnapshot(collection(db, 'equities'), 
+    const unsubEqs = onSnapshot(getColRef('equities'), 
       (snap) => setEquities(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
-    const unsubMiles = onSnapshot(collection(db, 'mileages'), 
+    const unsubMiles = onSnapshot(getColRef('mileages'), 
       (snap) => setMileages(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
     
-    const unsubCogs = onSnapshot(doc(db, 'settings', 'cogs'), 
+    const unsubCogs = onSnapshot(getDocRef('settings', 'cogs'), 
       (docSnap) => { if (docSnap.exists()) setCogs(docSnap.data()); }, console.error);
-    const unsubSettings = onSnapshot(doc(db, 'settings', 'app'), 
+    const unsubSettings = onSnapshot(getDocRef('settings', 'app'), 
       (docSnap) => { if (docSnap.exists()) setAppSettings(docSnap.data()); }, console.error);
 
     return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubCogs(); unsubSettings(); };
-  }, [isAuth]);
+  }, [user]);
 
   // --- MUTATION HANDLERS (Saving to Cloud) ---
   const handleAdd = async (collectionName, data) => {
-    await setDoc(doc(db, collectionName, Date.now().toString()), data);
+    if (!user) return;
+    await setDoc(getDocRef(collectionName, Date.now().toString() + Math.random().toString(36).substr(2, 5)), data);
   };
   
   const handleDelete = async (collectionName, id) => {
-    await deleteDoc(doc(db, collectionName, id.toString()));
+    if (!user) return;
+    await deleteDoc(getDocRef(collectionName, id.toString()));
   };
 
   const handleUpdateCogs = async (newCogs) => {
+    if (!user) return;
     setCogs(newCogs);
-    await setDoc(doc(db, 'settings', 'cogs'), newCogs);
+    await setDoc(getDocRef('settings', 'cogs'), newCogs);
   };
 
   const handleUpdateSettings = async (newSettings) => {
+    if (!user) return;
     setAppSettings(newSettings);
-    await setDoc(doc(db, 'settings', 'app'), newSettings);
+    await setDoc(getDocRef('settings', 'app'), newSettings);
   };
 
   // --- CALCULATIONS ---
@@ -120,9 +193,11 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="py-4">
-            <h1 className="text-2xl font-bold text-slate-800">Apex Performance Concepts LLC</h1>
-            <p className="text-sm text-slate-500">Automated Business Ledger</p>
+          <div className="py-4 flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800">Apex Performance Concepts LLC</h1>
+              <p className="text-sm text-slate-500">Automated Business Ledger</p>
+            </div>
           </div>
           <div className="flex overflow-x-auto hide-scrollbar border-t border-slate-100">
             <TabButton id="dashboard" icon={LayoutDashboard} label="Dashboard" />
@@ -137,34 +212,24 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <h2 className="text-xl font-semibold mb-4 text-slate-800">Command Center</h2>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <DashboardCard title="Total Revenue (Gross)" amount={totalGrossRevenue} subtitle="Total sales before fees" color="blue" />
               <DashboardCard title="Total Platform Fees" amount={totalPlatformFees} subtitle="eBay, Ads, & Shipping" color="red" isNegative />
               <DashboardCard title="Operating Expenses" amount={totalOperatingExpenses} subtitle="Printers, tools, gear" color="orange" isNegative />
-              
               <div className="col-span-1 md:col-span-2 lg:col-span-3 border-t border-slate-200 my-2"></div>
-              
               <DashboardCard title="Net Profit" amount={netProfit} subtitle="The actual 'Apex' earnings" color={netProfit >= 0 ? "emerald" : "red"} highlight />
               <DashboardCard title="Tax Reserve (25%)" amount={taxReserve} subtitle="Set aside for IRS & Iowa" color="indigo" />
-              
               <div className="col-span-1 md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                <ProgressCard 
-                  totalEquityPaid={totalEquityPaid} initialGoal={initialGoal} remainingToRecoup={remainingToRecoup}
-                  formatCurrency={formatCurrency} onUpdateGoal={(newGoal) => handleUpdateSettings({ ...appSettings, initialInvestment: newGoal })}
-                />
+                <ProgressCard totalEquityPaid={totalEquityPaid} initialGoal={initialGoal} remainingToRecoup={remainingToRecoup} formatCurrency={formatCurrency} onUpdateGoal={(newGoal) => handleUpdateSettings({ ...appSettings, initialInvestment: newGoal })} />
                 <div className={`rounded-xl border p-6 shadow-sm flex flex-col items-center justify-center text-center transition-colors ${availableGolfFund > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
                   <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">Available Golf Fund</h3>
                   <div className={`text-4xl font-extrabold ${availableGolfFund > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                     {formatCurrency(availableGolfFund)}
                   </div>
-                  <p className="text-sm text-slate-500 mt-2">
-                    {remainingToRecoup > 0 ? "Unlock by recouping initial investment first" : "Ready for the course!"}
-                  </p>
+                  <p className="text-sm text-slate-500 mt-2">{remainingToRecoup > 0 ? "Unlock by recouping initial investment first" : "Ready for the course!"}</p>
                 </div>
               </div>
             </div>
@@ -177,7 +242,6 @@ export default function App() {
         {activeTab === 'mileage' && <MileageLog mileages={mileages} onAdd={(data) => handleAdd('mileages', data)} onDelete={(id) => handleDelete('mileages', id)} formatCurrency={formatCurrency} />}
         {activeTab === 'cogs' && <Manufacturing cogs={cogs} onUpdate={handleUpdateCogs} costPerTrainer={costPerTrainer} petgCostPerGram={petgCostPerGram} formatCurrency={formatCurrency} />}
         {activeTab === 'tax' && <TaxSummary revenues={revenues} expenses={expenses} mileages={mileages} formatCurrency={formatCurrency} />}
-
       </main>
     </div>
   );
@@ -187,28 +251,19 @@ export default function App() {
 function ProgressCard({ totalEquityPaid, initialGoal, remainingToRecoup, formatCurrency, onUpdateGoal }) {
   const [isEditing, setIsEditing] = useState(false);
   const [tempGoal, setTempGoal] = useState(initialGoal);
-
-  const handleSave = () => {
-    onUpdateGoal(Number(tempGoal));
-    setIsEditing(false);
-  };
-
+  const handleSave = () => { onUpdateGoal(Number(tempGoal)); setIsEditing(false); };
   const percentComplete = initialGoal > 0 ? Math.min(100, (totalEquityPaid / initialGoal) * 100) : 100;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col items-center text-center relative group">
       <div className="absolute top-4 right-4">
         {!isEditing && (
-          <button onClick={() => setIsEditing(true)} className="text-slate-300 hover:text-blue-500 transition-colors p-1" title="Edit Initial Goal">
-            <Edit2 size={16} />
-          </button>
+          <button onClick={() => setIsEditing(true)} className="text-slate-300 hover:text-blue-500 transition-colors p-1" title="Edit Initial Goal"><Edit2 size={16} /></button>
         )}
       </div>
       <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">Remaining to Recoup</h3>
       <div className="text-3xl font-bold text-slate-800 mb-1">{formatCurrency(remainingToRecoup)}</div>
-      <div className="w-full bg-slate-200 rounded-full h-2.5 mt-4">
-        <div className="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style={{ width: `${percentComplete}%` }}></div>
-      </div>
+      <div className="w-full bg-slate-200 rounded-full h-2.5 mt-4"><div className="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style={{ width: `${percentComplete}%` }}></div></div>
       {isEditing ? (
         <div className="flex items-center space-x-2 mt-3">
           <span className="text-sm text-slate-500">Goal: $</span>
@@ -227,9 +282,7 @@ function DashboardCard({ title, amount, subtitle, color, isNegative, highlight }
   return (
     <div className={`bg-white rounded-xl border p-6 shadow-sm ${highlight ? 'ring-2 ring-emerald-500/20 shadow-md' : 'border-slate-200'}`}>
       <h3 className="text-sm font-medium text-slate-500">{title}</h3>
-      <div className={`text-3xl font-bold mt-2 ${colorMap[color]}`}>
-        {isNegative && amount > 0 ? '-' : ''}{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)}
-      </div>
+      <div className={`text-3xl font-bold mt-2 ${colorMap[color]}`}>{isNegative && amount > 0 ? '-' : ''}{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)}</div>
       <p className="text-xs text-slate-400 mt-2">{subtitle}</p>
     </div>
   );
@@ -237,12 +290,138 @@ function DashboardCard({ title, amount, subtitle, color, isNegative, highlight }
 
 function RevenueLog({ revenues, onAdd, onDelete, formatCurrency }) {
   const [formData, setFormData] = useState({ date: '', orderNum: '', desc: '', gross: '', ebay: '', ad: '', shipping: '' });
+  const [importPreview, setImportPreview] = useState(null);
+  const fileInputRef = useRef(null);
+
   const addRow = (e) => { e.preventDefault(); if (!formData.gross) return; onAdd(formData); setFormData({ date: '', orderNum: '', desc: '', gross: '', ebay: '', ad: '', shipping: '' }); };
+
+  const handleExport = () => {
+    const headers = ['Date', 'Order #', 'Description', 'Gross', 'eBay Fee', 'Ad Fee', 'Shipping', 'Net Payout'];
+    const data = revenues.map(r => {
+      const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0);
+      return [r.date, r.orderNum, r.desc, r.gross, r.ebay || 0, r.ad || 0, r.shipping || 0, net];
+    });
+    exportToCsv('Apex_Revenues.csv', [headers, ...data]);
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target.result;
+      const parsed = parseCSV(text);
+      
+      let headerIdx = 0;
+      while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].includes('Order Number'))) {
+        headerIdx++;
+      }
+      if (headerIdx >= parsed.length) { 
+        alert("Could not find standard eBay headers in this CSV."); 
+        return; 
+      }
+
+      const headers = parsed[headerIdx];
+      const dateIdx = headers.indexOf('Sale Date');
+      const orderIdx = headers.indexOf('Order Number');
+      const titleIdx = headers.indexOf('Item Title');
+      const soldForIdx = headers.indexOf('Sold For');
+      const shipHandIdx = headers.indexOf('Shipping And Handling');
+
+      const newRows = [];
+      const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
+      
+      for (let i = headerIdx + 1; i < parsed.length; i++) {
+        const row = parsed[i];
+        if (row.length < headers.length || !row[orderIdx]) continue;
+
+        const rawDate = row[dateIdx] || '';
+        const dateParts = rawDate.split('-');
+        let formattedDate = rawDate;
+        if (dateParts.length === 3) {
+           formattedDate = `20${dateParts[2]}-${months[dateParts[0]] || '01'}-${dateParts[1].padStart(2, '0')}`;
+        }
+
+        const cleanNum = (str) => Number((str || '').replace(/[^0-9.-]+/g,""));
+        const gross = cleanNum(row[soldForIdx]) + cleanNum(row[shipHandIdx]);
+
+        newRows.push({
+          id: Date.now() + i,
+          date: formattedDate,
+          orderNum: row[orderIdx],
+          desc: row[titleIdx],
+          gross: gross.toFixed(2),
+          ebay: '', ad: '', shipping: ''
+        });
+      }
+      setImportPreview(newRows);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleUpdateImportRow = (id, field, value) => {
+    setImportPreview(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+  };
+
+  const confirmImport = () => {
+    importPreview.forEach(r => {
+      onAdd({ date: r.date, orderNum: r.orderNum, desc: r.desc, gross: r.gross, ebay: r.ebay, ad: r.ad, shipping: r.shipping });
+    });
+    setImportPreview(null);
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in">
+      
+      {/* Import Preview Modal */}
+      {importPreview && (
+        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">Review & Add Fees</h2>
+                <p className="text-sm text-slate-500">eBay Orders Reports don't include fees or label costs. Add them here before saving!</p>
+              </div>
+              <button onClick={() => setImportPreview(null)} className="text-slate-400 hover:text-red-500"><X size={24}/></button>
+            </div>
+            
+            <div className="overflow-y-auto p-6 bg-slate-100 flex-1">
+              <table className="w-full text-left text-sm whitespace-nowrap bg-white rounded shadow-sm">
+                <thead className="bg-slate-800 text-slate-100 sticky top-0">
+                  <tr>
+                    <th className="p-3">Date</th><th className="p-3">Order #</th><th className="p-3 w-1/3">Item</th>
+                    <th className="p-3 text-right">Gross Sale</th>
+                    <th className="p-3">eBay Fee $</th><th className="p-3">Ad Fee $</th><th className="p-3">Shipping Label $</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {importPreview.map(r => (
+                    <tr key={r.id} className="hover:bg-slate-50">
+                      <td className="p-3">{r.date}</td><td className="p-3 font-mono text-xs text-slate-500">{r.orderNum}</td>
+                      <td className="p-3 truncate max-w-xs" title={r.desc}>{r.desc}</td>
+                      <td className="p-3 text-right font-medium">{formatCurrency(r.gross)}</td>
+                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" placeholder="0.00" value={r.ebay} onChange={e => handleUpdateImportRow(r.id, 'ebay', e.target.value)}/></td>
+                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" placeholder="0.00" value={r.ad} onChange={e => handleUpdateImportRow(r.id, 'ad', e.target.value)}/></td>
+                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" placeholder="0.00" value={r.shipping} onChange={e => handleUpdateImportRow(r.id, 'shipping', e.target.value)}/></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-4 border-t border-slate-200 bg-white flex justify-end space-x-3">
+              <button onClick={() => setImportPreview(null)} className="px-4 py-2 rounded text-slate-600 hover:bg-slate-100 font-medium transition-colors">Cancel</button>
+              <button onClick={confirmImport} className="px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center transition-colors">
+                <Check size={18} className="mr-2"/> Save {importPreview.length} Orders to Ledger
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4 text-slate-800">Add New Sale</h2>
+        <h2 className="text-lg font-semibold mb-4 text-slate-800">Add Single Sale</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-7 gap-4">
           <input type="date" className="input-field col-span-1" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
           <input type="text" placeholder="Order #" className="input-field col-span-1" value={formData.orderNum} onChange={e => setFormData({...formData, orderNum: e.target.value})} />
@@ -258,9 +437,21 @@ function RevenueLog({ revenues, onAdd, onDelete, formatCurrency }) {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <h3 className="font-semibold text-slate-700">Sales History</h3>
+          <div className="flex space-x-4">
+            <input type="file" accept=".csv" id="csv-upload" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
+            <button onClick={() => fileInputRef.current.click()} className="text-sm font-medium text-slate-600 hover:text-slate-800 flex items-center transition-colors border border-slate-300 px-3 py-1.5 rounded-md bg-white shadow-sm">
+              <Upload size={16} className="mr-1.5" /> Import eBay CSV
+            </button>
+            <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm">
+              <Download size={16} className="mr-1.5" /> Export CSV
+            </button>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+            <thead className="bg-white border-b border-slate-200 text-slate-500">
               <tr>
                 <th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Order #</th><th className="p-4 font-medium">Description</th>
                 <th className="p-4 font-medium text-right">Gross</th><th className="p-4 font-medium text-right text-red-500">eBay Fee</th>
@@ -273,7 +464,7 @@ function RevenueLog({ revenues, onAdd, onDelete, formatCurrency }) {
                 const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0);
                 return (
                   <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4">{r.date}</td><td className="p-4 text-slate-500 font-mono text-xs">{r.orderNum || '-'}</td><td className="p-4">{r.desc}</td>
+                    <td className="p-4">{r.date}</td><td className="p-4 text-slate-500 font-mono text-xs">{r.orderNum || '-'}</td><td className="p-4 truncate max-w-xs" title={r.desc}>{r.desc}</td>
                     <td className="p-4 text-right font-medium">{formatCurrency(r.gross)}</td><td className="p-4 text-right text-slate-500">{formatCurrency(r.ebay || 0)}</td>
                     <td className="p-4 text-right text-slate-500">{formatCurrency(r.ad || 0)}</td><td className="p-4 text-right text-slate-500">{formatCurrency(r.shipping || 0)}</td>
                     <td className="p-4 text-right font-bold text-emerald-600">{formatCurrency(net)}</td>
@@ -294,6 +485,12 @@ function ExpenseTracker({ expenses, onAdd, onDelete, formatCurrency }) {
   const categories = ['Supplies', 'Advertising', 'Travel', 'Equipment', 'Office'];
   const addRow = (e) => { e.preventDefault(); if (!formData.amount) return; onAdd(formData); setFormData({ date: '', desc: '', category: 'Supplies', amount: '' }); };
 
+  const handleExport = () => {
+    const headers = ['Date', 'Description', 'Category', 'Amount'];
+    const data = expenses.map(e => [e.date, e.desc, e.category, e.amount]);
+    exportToCsv('Apex_Expenses.csv', [headers, ...data]);
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in">
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
@@ -310,19 +507,25 @@ function ExpenseTracker({ expenses, onAdd, onDelete, formatCurrency }) {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
-            <tr><th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Description</th><th className="p-4 font-medium">Category</th><th className="p-4 font-medium text-right">Amount</th><th className="p-4"></th></tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {expenses.map(e => (
-              <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                <td className="p-4">{e.date}</td><td className="p-4">{e.desc}</td><td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{e.category}</span></td>
-                <td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td><td className="p-4 text-right"><button onClick={() => onDelete(e.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <h3 className="font-semibold text-slate-700">Expense History</h3>
+          <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm"><Download size={16} className="mr-1.5" /> Export CSV</button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead className="bg-white border-b border-slate-200 text-slate-500">
+              <tr><th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Description</th><th className="p-4 font-medium">Category</th><th className="p-4 font-medium text-right">Amount</th><th className="p-4"></th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {expenses.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : expenses.map(e => (
+                <tr key={e.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4">{e.date}</td><td className="p-4">{e.desc}</td><td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{e.category}</span></td>
+                  <td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td><td className="p-4 text-right"><button onClick={() => onDelete(e.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -331,6 +534,12 @@ function ExpenseTracker({ expenses, onAdd, onDelete, formatCurrency }) {
 function OwnerEquity({ equities, initialGoal, onAdd, onDelete, formatCurrency }) {
   const [formData, setFormData] = useState({ date: '', desc: '', amount: '' });
   const addRow = (e) => { e.preventDefault(); onAdd(formData); setFormData({ date: '', desc: '', amount: '' }); };
+
+  const handleExport = () => {
+    const headers = ['Date', 'Description', 'Amount'];
+    const data = equities.map(e => [e.date, e.desc, e.amount]);
+    exportToCsv('Apex_Owner_Equity.csv', [headers, ...data]);
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -345,19 +554,25 @@ function OwnerEquity({ equities, initialGoal, onAdd, onDelete, formatCurrency })
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
-            <tr><th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Description</th><th className="p-4 font-medium text-right">Amount</th><th className="p-4"></th></tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {equities.map(e => (
-              <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                <td className="p-4">{e.date}</td><td className="p-4">{e.desc}</td><td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td>
-                <td className="p-4 text-right"><button onClick={() => onDelete(e.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <h3 className="font-semibold text-slate-700">Payout History</h3>
+          <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm"><Download size={16} className="mr-1.5" /> Export CSV</button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead className="bg-white border-b border-slate-200 text-slate-500">
+              <tr><th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Description</th><th className="p-4 font-medium text-right">Amount</th><th className="p-4"></th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {equities.length === 0 ? <tr><td colSpan="4" className="p-4 text-center text-slate-400">No records found.</td></tr> : equities.map(e => (
+                <tr key={e.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4">{e.date}</td><td className="p-4">{e.desc}</td><td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td>
+                  <td className="p-4 text-right"><button onClick={() => onDelete(e.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -367,6 +582,12 @@ function MileageLog({ mileages, onAdd, onDelete, formatCurrency }) {
   const [formData, setFormData] = useState({ date: '', desc: '', miles: '' });
   const RATE_2026 = 0.725;
   const addRow = (e) => { e.preventDefault(); onAdd(formData); setFormData({ date: '', desc: '', miles: '' }); };
+
+  const handleExport = () => {
+    const headers = ['Date', 'Trip Description', 'Miles', 'Deduction Value'];
+    const data = mileages.map(m => [m.date, m.desc, m.miles, m.miles * RATE_2026]);
+    exportToCsv('Apex_Mileage_Log.csv', [headers, ...data]);
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -381,19 +602,25 @@ function MileageLog({ mileages, onAdd, onDelete, formatCurrency }) {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
-            <tr><th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Trip Description</th><th className="p-4 font-medium text-right">Miles</th><th className="p-4 font-medium text-right text-blue-600">Deduction Value</th><th className="p-4"></th></tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {mileages.map(m => (
-              <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                <td className="p-4">{m.date}</td><td className="p-4">{m.desc}</td><td className="p-4 text-right font-medium">{m.miles} mi</td>
-                <td className="p-4 text-right font-bold text-blue-600">{formatCurrency(m.miles * RATE_2026)}</td><td className="p-4 text-right"><button onClick={() => onDelete(m.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <h3 className="font-semibold text-slate-700">Trip History</h3>
+          <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm"><Download size={16} className="mr-1.5" /> Export CSV</button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead className="bg-white border-b border-slate-200 text-slate-500">
+              <tr><th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Trip Description</th><th className="p-4 font-medium text-right">Miles</th><th className="p-4 font-medium text-right text-blue-600">Deduction Value</th><th className="p-4"></th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {mileages.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : mileages.map(m => (
+                <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4">{m.date}</td><td className="p-4">{m.desc}</td><td className="p-4 text-right font-medium">{m.miles} mi</td>
+                  <td className="p-4 text-right font-bold text-blue-600">{formatCurrency(m.miles * RATE_2026)}</td><td className="p-4 text-right"><button onClick={() => onDelete(m.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
