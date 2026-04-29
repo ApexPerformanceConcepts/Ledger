@@ -10,13 +10,13 @@ import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'fi
 // Smart config: Uses preview environment if here, or your keys if on Vercel
 const isPreviewEnv = typeof __firebase_config !== 'undefined';
 const firebaseConfig = isPreviewEnv ? JSON.parse(__firebase_config) : {
-  apiKey: "PASTE_YOUR_API_KEY_HERE",
-  authDomain: "PASTE_YOUR_AUTH_DOMAIN_HERE",
-  projectId: "PASTE_YOUR_PROJECT_ID_HERE",
-  storageBucket: "PASTE_YOUR_STORAGE_BUCKET_HERE",
-  messagingSenderId: "PASTE_YOUR_MESSAGING_SENDER_ID_HERE",
-  appId: "PASTE_YOUR_APP_ID_HERE",
-  measurementId: "PASTE_YOUR_MEASUREMENT_ID_HERE"
+  apiKey: "AIzaSyAXtaglk0mUuQyknLmyGuT6yoB8a0KYH7g",
+  authDomain: "apex-performance-ledger.firebaseapp.com",
+  projectId: "apex-performance-ledger",
+  storageBucket: "apex-performance-ledger.firebasestorage.app",
+  messagingSenderId: "833698468013",
+  appId: "1:833698468013:web:a2665043c9a345afd0f624",
+  measurementId: "G-0NR5S32JGE"
 };
 
 const app = initializeApp(firebaseConfig);
