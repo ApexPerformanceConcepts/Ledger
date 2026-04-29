@@ -217,6 +217,15 @@ export default function App() {
   const drawsGolf = useMemo(() => equities.filter(e => e.category === 'Golf Fund').reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
   const drawsOther = useMemo(() => equities.filter(e => e.category === 'Other Draw').reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
   
+  // Calculate specific Amex Transfers
+  const amexTransfers = useMemo(() => equities.filter(e => e.category === 'Amex Transfer (Op Cash)').reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
+
+  // Calculate expenses starting from Amex Account Opening (April 29, 2026)
+  const AMEX_START_DATE = '2026-04-29';
+  const amexOperatingExpenses = useMemo(() => 
+    expenses.filter(e => e.date >= AMEX_START_DATE).reduce((sum, e) => sum + Number(e.amount || 0), 0)
+  , [expenses]);
+
   const initialGoal = Number(appSettings.initialInvestment || 0);
   const remainingToRecoup = Math.max(0, initialGoal - drawsRecoup);
   
@@ -224,8 +233,8 @@ export default function App() {
   const isGolfUnlocked = safeCash >= initialGoal;
   const availableGolfFund = isGolfUnlocked ? Math.max(0, safeCash - initialGoal - drawsGolf - drawsOther) : 0;
 
-  const totalNetPayouts = totalGrossRevenue - totalPlatformFees;
-  const estimatedCashBalance = totalNetPayouts - totalOperatingExpenses - (drawsRecoup + drawsGolf + drawsOther);
+  // New Estimated Cash Balance simply tracks Transfers IN vs Amex Expenses OUT
+  const estimatedCashBalance = amexTransfers - amexOperatingExpenses;
 
   const petgCostPerGram = cogs.spoolCost / 1000;
   const costPerTrainer = (petgCostPerGram * cogs.gramsUsed) + 
@@ -283,7 +292,7 @@ export default function App() {
               <div className="col-span-1 md:col-span-2 lg:col-span-3 border-t border-slate-200 my-2"></div>
               <DashboardCard title="Net Profit" amount={netProfit} subtitle="The actual 'Apex' earnings" color={netProfit >= 0 ? "emerald" : "red"} highlight />
               <DashboardCard title="Tax Reserve (25%)" amount={taxReserve} subtitle="Set aside for IRS & Iowa" color="indigo" />
-              <DashboardCard title="Est. Checking Balance" amount={estimatedCashBalance} subtitle="All cash in minus cash out" color="blue" highlight />
+              <DashboardCard title="Amex Checking Balance" amount={estimatedCashBalance} subtitle="Transfers in minus expenses out (since Apr 29)" color="blue" highlight />
               <div className="col-span-1 md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                 <ProgressCard drawsRecoup={drawsRecoup} initialGoal={initialGoal} remainingToRecoup={remainingToRecoup} formatCurrency={formatCurrency} onUpdateGoal={(newGoal) => handleUpdateSettings({ ...appSettings, initialInvestment: newGoal })} />
                 
