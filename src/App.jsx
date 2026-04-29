@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 
 // --- FIREBASE SETUP ---
 const isPreviewEnv = typeof __firebase_config !== 'undefined';
@@ -104,7 +104,6 @@ const useSortableData = (items, defaultKey = 'date') => {
   return { items: sortedItems, requestSort, sortConfig };
 };
 
-// --- REUSABLE HEADER COMPONENT ---
 const SortableHeader = ({ label, sortKey, currentSort, requestSort, alignRight, textColor }) => {
   const isActive = currentSort?.key === sortKey;
   return (
@@ -179,6 +178,15 @@ export default function App() {
     if (!user) return;
     await setDoc(getDocRef(collectionName, Date.now().toString() + Math.random().toString(36).substr(2, 5)), data);
   };
+
+  const handleUpdateRecord = async (collectionName, id, updatedData) => {
+    if (!user) return;
+    const cleanData = { ...updatedData };
+    // Remove derived data so we don't save garbage to Firebase
+    delete cleanData.id; delete cleanData.net; delete cleanData.trueProfit; 
+    delete cleanData.margin; delete cleanData.deduction;
+    await updateDoc(getDocRef(collectionName, id.toString()), cleanData);
+  };
   
   const handleDelete = async (collectionName, id) => {
     if (!user) return;
@@ -205,12 +213,16 @@ export default function App() {
   const netProfit = totalGrossRevenue - totalPlatformFees - totalOperatingExpenses;
   const taxReserve = netProfit > 0 ? netProfit * 0.25 : 0;
   
-  const totalEquityPaid = useMemo(() => equities.reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
+  const drawsRecoup = useMemo(() => equities.filter(e => e.category === 'Recoup Investment' || !e.category).reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
+  const drawsGolf = useMemo(() => equities.filter(e => e.category === 'Golf Fund').reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
+  const drawsOther = useMemo(() => equities.filter(e => e.category === 'Other Draw').reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
   
   const initialGoal = Number(appSettings.initialInvestment || 0);
-  const remainingToRecoup = Math.max(0, initialGoal - totalEquityPaid);
+  const remainingToRecoup = Math.max(0, initialGoal - drawsRecoup);
   
-  const availableGolfFund = remainingToRecoup === 0 ? Math.max(0, netProfit - taxReserve) : 0;
+  const safeCash = netProfit - taxReserve;
+  const isGolfUnlocked = safeCash >= initialGoal;
+  const availableGolfFund = isGolfUnlocked ? Math.max(0, safeCash - initialGoal - drawsGolf - drawsOther) : 0;
 
   const petgCostPerGram = cogs.spoolCost / 1000;
   const costPerTrainer = (petgCostPerGram * cogs.gramsUsed) + 
@@ -227,13 +239,10 @@ export default function App() {
     <button
       onClick={() => setActiveTab(id)}
       className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors w-full sm:w-auto ${
-        activeTab === id 
-          ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/50' 
-          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+        activeTab === id ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
       }`}
     >
-      <Icon size={18} />
-      <span>{label}</span>
+      <Icon size={18} /><span>{label}</span>
     </button>
   );
 
@@ -252,7 +261,7 @@ export default function App() {
             <TabButton id="analytics" icon={PieChart} label="Analytics" />
             <TabButton id="revenue" icon={DollarSign} label="Revenue Log" />
             <TabButton id="expenses" icon={Receipt} label="Expense Tracker" />
-            <TabButton id="equity" icon={Wallet} label="Owner Equity" />
+            <TabButton id="equity" icon={Wallet} label="Payouts & Transfers" />
             <TabButton id="mileage" icon={Car} label="Mileage Log" />
             <TabButton id="cogs" icon={Settings} label="Manufacturing" />
             <TabButton id="tax" icon={ClipboardList} label="Tax Summary" />
@@ -272,13 +281,15 @@ export default function App() {
               <DashboardCard title="Net Profit" amount={netProfit} subtitle="The actual 'Apex' earnings" color={netProfit >= 0 ? "emerald" : "red"} highlight />
               <DashboardCard title="Tax Reserve (25%)" amount={taxReserve} subtitle="Set aside for IRS & Iowa" color="indigo" />
               <div className="col-span-1 md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                <ProgressCard totalEquityPaid={totalEquityPaid} initialGoal={initialGoal} remainingToRecoup={remainingToRecoup} formatCurrency={formatCurrency} onUpdateGoal={(newGoal) => handleUpdateSettings({ ...appSettings, initialInvestment: newGoal })} />
+                <ProgressCard drawsRecoup={drawsRecoup} initialGoal={initialGoal} remainingToRecoup={remainingToRecoup} formatCurrency={formatCurrency} onUpdateGoal={(newGoal) => handleUpdateSettings({ ...appSettings, initialInvestment: newGoal })} />
                 <div className={`rounded-xl border p-6 shadow-sm flex flex-col items-center justify-center text-center transition-colors ${availableGolfFund > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
                   <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">Available Golf Fund</h3>
                   <div className={`text-4xl font-extrabold ${availableGolfFund > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                     {formatCurrency(availableGolfFund)}
                   </div>
-                  <p className="text-sm text-slate-500 mt-2">{remainingToRecoup > 0 ? "Unlock by recouping initial investment first" : "Ready for the course!"}</p>
+                  <p className="text-sm text-slate-500 mt-2">
+                    {!isGolfUnlocked ? `Generate ${formatCurrency(Math.max(0, initialGoal - safeCash))} more safe profit to unlock` : "Ready for the course!"}
+                  </p>
                 </div>
               </div>
             </div>
@@ -286,10 +297,10 @@ export default function App() {
         )}
 
         {activeTab === 'analytics' && <Analytics revenues={revenues} expenses={expenses} formatCurrency={formatCurrency} />}
-        {activeTab === 'revenue' && <RevenueLog revenues={revenues} costPerTrainer={costPerTrainer} onAdd={(data) => handleAdd('revenues', data)} onDelete={(id) => handleDelete('revenues', id)} formatCurrency={formatCurrency} />}
-        {activeTab === 'expenses' && <ExpenseTracker expenses={expenses} onAdd={(data) => handleAdd('expenses', data)} onDelete={(id) => handleDelete('expenses', id)} formatCurrency={formatCurrency} />}
-        {activeTab === 'equity' && <OwnerEquity equities={equities} initialGoal={initialGoal} onAdd={(data) => handleAdd('equities', data)} onDelete={(id) => handleDelete('equities', id)} formatCurrency={formatCurrency} />}
-        {activeTab === 'mileage' && <MileageLog mileages={mileages} onAdd={(data) => handleAdd('mileages', data)} onDelete={(id) => handleDelete('mileages', id)} formatCurrency={formatCurrency} />}
+        {activeTab === 'revenue' && <RevenueLog revenues={revenues} costPerTrainer={costPerTrainer} onAdd={(data) => handleAdd('revenues', data)} onUpdate={(id, data) => handleUpdateRecord('revenues', id, data)} onDelete={(id) => handleDelete('revenues', id)} formatCurrency={formatCurrency} />}
+        {activeTab === 'expenses' && <ExpenseTracker expenses={expenses} onAdd={(data) => handleAdd('expenses', data)} onUpdate={(id, data) => handleUpdateRecord('expenses', id, data)} onDelete={(id) => handleDelete('expenses', id)} formatCurrency={formatCurrency} />}
+        {activeTab === 'equity' && <OwnerEquity equities={equities} initialGoal={initialGoal} onAdd={(data) => handleAdd('equities', data)} onUpdate={(id, data) => handleUpdateRecord('equities', id, data)} onDelete={(id) => handleDelete('equities', id)} formatCurrency={formatCurrency} />}
+        {activeTab === 'mileage' && <MileageLog mileages={mileages} onAdd={(data) => handleAdd('mileages', data)} onUpdate={(id, data) => handleUpdateRecord('mileages', id, data)} onDelete={(id) => handleDelete('mileages', id)} formatCurrency={formatCurrency} />}
         {activeTab === 'cogs' && <Manufacturing cogs={cogs} onUpdate={handleUpdateCogs} costPerTrainer={costPerTrainer} petgCostPerGram={petgCostPerGram} formatCurrency={formatCurrency} />}
         {activeTab === 'tax' && <TaxSummary revenues={revenues} expenses={expenses} mileages={mileages} formatCurrency={formatCurrency} />}
       </main>
@@ -298,56 +309,40 @@ export default function App() {
 }
 
 // --- SUB-COMPONENTS ---
+const inlineInputStyle = "w-full border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500 bg-white";
 
 function Analytics({ revenues, expenses, formatCurrency }) {
-  // 1. Prepare Data for Bar Chart (Month over Month)
   const monthlyData = useMemo(() => {
     const dataMap = {};
-    
     revenues.forEach(r => {
       if (!r.date) return;
-      const month = r.date.substring(0, 7); // 'YYYY-MM'
+      const month = r.date.substring(0, 7);
       if (!dataMap[month]) dataMap[month] = { month, rev: 0, exp: 0 };
       dataMap[month].rev += Number(r.gross || 0);
     });
-
     expenses.forEach(e => {
       if (!e.date) return;
       const month = e.date.substring(0, 7);
       if (!dataMap[month]) dataMap[month] = { month, rev: 0, exp: 0 };
       dataMap[month].exp += Number(e.amount || 0);
     });
-
-    // Sort chronologically
     return Object.values(dataMap).sort((a, b) => a.month.localeCompare(b.month));
   }, [revenues, expenses]);
 
-  // Find max value to scale the chart bars
   const maxBarValue = Math.max(10, ...monthlyData.map(d => Math.max(d.rev, d.exp)));
 
-  // 2. Prepare Data for Pie/Donut Chart (Expenses Breakdown)
   const categoryData = useMemo(() => {
-    const totals = {};
-    let grandTotal = 0;
+    const totals = {}; let grandTotal = 0;
     expenses.forEach(e => {
       const amt = Number(e.amount || 0);
       totals[e.category] = (totals[e.category] || 0) + amt;
       grandTotal += amt;
     });
-
-    const colors = {
-      'Supplies': '#3b82f6', // blue
-      'Advertising': '#f59e0b', // amber
-      'Travel': '#10b981', // emerald
-      'Equipment': '#8b5cf6', // purple
-      'Office': '#ef4444' // red
-    };
-
+    const colors = { 'Supplies': '#3b82f6', 'Advertising': '#f59e0b', 'Travel': '#10b981', 'Equipment': '#8b5cf6', 'Office': '#ef4444' };
     let currentOffset = 0;
     return Object.keys(totals).map(cat => {
       const pct = grandTotal > 0 ? (totals[cat] / grandTotal) * 100 : 0;
-      const offset = currentOffset;
-      currentOffset += pct;
+      const offset = currentOffset; currentOffset += pct;
       return { category: cat, amount: totals[cat], pct, offset, color: colors[cat] || '#94a3b8' };
     }).sort((a, b) => b.amount - a.amount);
   }, [expenses]);
@@ -355,10 +350,7 @@ function Analytics({ revenues, expenses, formatCurrency }) {
   return (
     <div className="space-y-6 animate-in fade-in">
       <h2 className="text-xl font-semibold mb-4 text-slate-800">Analytics Dashboard</h2>
-      
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Bar Chart: Revenue vs Expenses */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <h3 className="font-semibold text-slate-700 flex items-center"><BarChart3 size={18} className="mr-2 text-slate-400"/> Cash Flow by Month</h3>
@@ -367,31 +359,21 @@ function Analytics({ revenues, expenses, formatCurrency }) {
               <div className="flex items-center"><span className="w-3 h-3 rounded-sm bg-orange-400 mr-1.5"></span> Expenses</div>
             </div>
           </div>
-          
           <div className="flex-1 min-h-[250px] flex items-end space-x-2 sm:space-x-6 pb-6 border-b border-slate-100 overflow-x-auto hide-scrollbar pt-6">
-            {monthlyData.length === 0 ? (
-               <div className="w-full text-center text-slate-400 text-sm pb-10">No data to display yet.</div>
-            ) : (
+            {monthlyData.length === 0 ? <div className="w-full text-center text-slate-400 text-sm pb-10">No data to display yet.</div> : (
               monthlyData.map((data) => {
                 const [year, month] = data.month.split('-');
                 const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'short' });
                 const revHeight = Math.max(2, (data.rev / maxBarValue) * 100);
                 const expHeight = Math.max(2, (data.exp / maxBarValue) * 100);
-                
                 return (
                   <div key={data.month} className="flex flex-col items-center flex-1 min-w-[50px] group">
                     <div className="flex items-end justify-center space-x-1 w-full h-48 relative">
-                      {/* Revenue Bar */}
                       <div className="w-1/2 bg-blue-500 rounded-t-sm transition-all duration-500 relative" style={{ height: `${revHeight}%` }}>
-                        <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                          Rev: {formatCurrency(data.rev)}
-                        </div>
+                        <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">Rev: {formatCurrency(data.rev)}</div>
                       </div>
-                      {/* Expense Bar */}
                       <div className="w-1/2 bg-orange-400 rounded-t-sm transition-all duration-500 relative" style={{ height: `${expHeight}%` }}>
-                        <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                          Exp: {formatCurrency(data.exp)}
-                        </div>
+                        <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">Exp: {formatCurrency(data.exp)}</div>
                       </div>
                     </div>
                     <div className="mt-3 text-xs font-medium text-slate-500">{monthName} '{year.slice(2)}</div>
@@ -401,28 +383,13 @@ function Analytics({ revenues, expenses, formatCurrency }) {
             )}
           </div>
         </div>
-
-        {/* Donut Chart: Expense Breakdown */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col">
           <h3 className="font-semibold text-slate-700 flex items-center mb-6"><PieChart size={18} className="mr-2 text-slate-400"/> Operating Expenses Breakdown</h3>
-          
-          {categoryData.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">No expenses logged yet.</div>
-          ) : (
+          {categoryData.length === 0 ? <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">No expenses logged yet.</div> : (
             <div className="flex flex-col sm:flex-row items-center justify-center flex-1 gap-8">
-              {/* SVG Donut */}
               <div className="relative w-48 h-48">
                 <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90 rounded-full">
-                  {categoryData.map((slice) => (
-                    <circle 
-                      key={slice.category} r="12" cx="16" cy="16" 
-                      fill="transparent" stroke={slice.color} strokeWidth="8"
-                      strokeDasharray={`${slice.pct > 0 ? slice.pct : 0} 100`} 
-                      strokeDashoffset={`-${slice.offset}`}
-                      className="transition-all duration-1000 ease-out"
-                    />
-                  ))}
-                  {/* Inner white circle for donut hole */}
+                  {categoryData.map((slice) => <circle key={slice.category} r="12" cx="16" cy="16" fill="transparent" stroke={slice.color} strokeWidth="8" strokeDasharray={`${slice.pct > 0 ? slice.pct : 0} 100`} strokeDashoffset={`-${slice.offset}`} className="transition-all duration-1000 ease-out" />)}
                   <circle r="8" cx="16" cy="16" fill="white" />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -430,43 +397,32 @@ function Analytics({ revenues, expenses, formatCurrency }) {
                   <span className="text-lg font-bold text-slate-700">{formatCurrency(categoryData.reduce((s, c) => s + c.amount, 0))}</span>
                 </div>
               </div>
-
-              {/* Legend */}
               <div className="flex flex-col space-y-3 w-full sm:w-auto">
                 {categoryData.map(slice => (
                   <div key={slice.category} className="flex items-center justify-between space-x-4">
-                    <div className="flex items-center">
-                      <span className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: slice.color }}></span>
-                      <span className="text-sm text-slate-600">{slice.category}</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm font-medium text-slate-800">{formatCurrency(slice.amount)}</span>
-                      <span className="text-xs text-slate-400 w-8 text-right">{Math.round(slice.pct)}%</span>
-                    </div>
+                    <div className="flex items-center"><span className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: slice.color }}></span><span className="text-sm text-slate-600">{slice.category}</span></div>
+                    <div className="flex items-center space-x-2"><span className="text-sm font-medium text-slate-800">{formatCurrency(slice.amount)}</span><span className="text-xs text-slate-400 w-8 text-right">{Math.round(slice.pct)}%</span></div>
                   </div>
                 ))}
               </div>
             </div>
           )}
         </div>
-
       </div>
     </div>
   );
 }
 
-function ProgressCard({ totalEquityPaid, initialGoal, remainingToRecoup, formatCurrency, onUpdateGoal }) {
+function ProgressCard({ drawsRecoup, initialGoal, remainingToRecoup, formatCurrency, onUpdateGoal }) {
   const [isEditing, setIsEditing] = useState(false);
   const [tempGoal, setTempGoal] = useState(initialGoal);
   const handleSave = () => { onUpdateGoal(Number(tempGoal)); setIsEditing(false); };
-  const percentComplete = initialGoal > 0 ? Math.min(100, (totalEquityPaid / initialGoal) * 100) : 100;
+  const percentComplete = initialGoal > 0 ? Math.min(100, (drawsRecoup / initialGoal) * 100) : 100;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col items-center text-center relative group">
       <div className="absolute top-4 right-4">
-        {!isEditing && (
-          <button onClick={() => setIsEditing(true)} className="text-slate-300 hover:text-blue-500 transition-colors p-1" title="Edit Initial Goal"><Edit2 size={16} /></button>
-        )}
+        {!isEditing && <button onClick={() => setIsEditing(true)} className="text-slate-300 hover:text-blue-500 transition-colors p-1" title="Edit Initial Goal"><Edit2 size={16} /></button>}
       </div>
       <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">Remaining to Recoup</h3>
       <div className="text-3xl font-bold text-slate-800 mb-1">{formatCurrency(remainingToRecoup)}</div>
@@ -477,9 +433,7 @@ function ProgressCard({ totalEquityPaid, initialGoal, remainingToRecoup, formatC
           <input type="number" className="border border-slate-300 rounded px-2 py-1 w-24 text-sm outline-none focus:border-blue-500" value={tempGoal} onChange={(e) => setTempGoal(e.target.value)} />
           <button onClick={handleSave} className="bg-blue-100 text-blue-600 p-1.5 rounded hover:bg-blue-200"><Check size={14} /></button>
         </div>
-      ) : (
-        <p className="text-xs text-slate-500 mt-3">Progress to {formatCurrency(initialGoal)} initial investment</p>
-      )}
+      ) : <p className="text-xs text-slate-500 mt-3">Progress to {formatCurrency(initialGoal)} initial investment</p>}
     </div>
   );
 }
@@ -495,12 +449,13 @@ function DashboardCard({ title, amount, subtitle, color, isNegative, highlight }
   );
 }
 
-function RevenueLog({ revenues, costPerTrainer, onAdd, onDelete, formatCurrency }) {
+function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, formatCurrency }) {
   const [formData, setFormData] = useState({ date: '', orderNum: '', desc: '', gross: '', ebay: '', ad: '', shipping: '' });
   const [importPreview, setImportPreview] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
   const fileInputRef = useRef(null);
 
-  // Pre-calculate net payout, true profit, and margin
   const enrichedRevenues = useMemo(() => revenues.map(r => {
     const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0);
     const trueProfit = net - costPerTrainer;
@@ -511,6 +466,9 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onDelete, formatCurrency 
   const { items: sortedRevenues, requestSort, sortConfig } = useSortableData(enrichedRevenues);
 
   const addRow = (e) => { e.preventDefault(); if (!formData.gross) return; onAdd(formData); setFormData({ date: '', orderNum: '', desc: '', gross: '', ebay: '', ad: '', shipping: '' }); };
+  
+  const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item }); };
+  const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
 
   const handleExport = () => {
     const headers = ['Date', 'Order #', 'Description', 'Gross', 'eBay Fee', 'Ad Fee', 'Shipping', 'Net Payout', 'True Profit', 'Margin %'];
@@ -525,33 +483,26 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onDelete, formatCurrency 
     reader.onload = (evt) => {
       const text = evt.target.result;
       const parsed = parseCSV(text);
-      
       let headerIdx = 0;
       while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].includes('Order Number'))) headerIdx++;
       if (headerIdx >= parsed.length) { alert("Could not find standard eBay headers in this CSV."); return; }
 
       const headers = parsed[headerIdx];
-      const dateIdx = headers.indexOf('Sale Date');
-      const orderIdx = headers.indexOf('Order Number');
-      const titleIdx = headers.indexOf('Item Title');
-      const soldForIdx = headers.indexOf('Sold For');
+      const dateIdx = headers.indexOf('Sale Date'); const orderIdx = headers.indexOf('Order Number');
+      const titleIdx = headers.indexOf('Item Title'); const soldForIdx = headers.indexOf('Sold For');
       const shipHandIdx = headers.indexOf('Shipping And Handling');
-
       const newRows = [];
       const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
       
       for (let i = headerIdx + 1; i < parsed.length; i++) {
         const row = parsed[i];
         if (row.length < headers.length || !row[orderIdx]) continue;
-
         const rawDate = row[dateIdx] || '';
         const dateParts = rawDate.split('-');
         let formattedDate = rawDate;
         if (dateParts.length === 3) formattedDate = `20${dateParts[2]}-${months[dateParts[0]] || '01'}-${dateParts[1].padStart(2, '0')}`;
-
         const cleanNum = (str) => Number((str || '').replace(/[^0-9.-]+/g,""));
         const gross = cleanNum(row[soldForIdx]) + cleanNum(row[shipHandIdx]);
-
         newRows.push({ id: Date.now() + i, date: formattedDate, orderNum: row[orderIdx], desc: row[titleIdx], gross: gross.toFixed(2), ebay: '', ad: '', shipping: '' });
       }
       setImportPreview(newRows);
@@ -560,7 +511,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onDelete, formatCurrency 
     e.target.value = '';
   };
 
-  const handleUpdateImportRow = (id, field, value) => setImportPreview(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
   const confirmImport = () => { importPreview.forEach(r => { onAdd({ date: r.date, orderNum: r.orderNum, desc: r.desc, gross: r.gross, ebay: r.ebay, ad: r.ad, shipping: r.shipping }); }); setImportPreview(null); };
 
   return (
@@ -569,7 +519,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onDelete, formatCurrency 
         <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-              <div><h2 className="text-xl font-bold text-slate-800">Review & Add Fees</h2><p className="text-sm text-slate-500">eBay Orders Reports don't include fees or label costs. Add them here before saving!</p></div>
+              <div><h2 className="text-xl font-bold text-slate-800">Review & Add Fees</h2></div>
               <button onClick={() => setImportPreview(null)} className="text-slate-400 hover:text-red-500"><X size={24}/></button>
             </div>
             <div className="overflow-y-auto p-6 bg-slate-100 flex-1">
@@ -581,9 +531,9 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onDelete, formatCurrency 
                   {importPreview.map(r => (
                     <tr key={r.id} className="hover:bg-slate-50">
                       <td className="p-3">{r.date}</td><td className="p-3 font-mono text-xs text-slate-500">{r.orderNum}</td><td className="p-3 truncate max-w-xs" title={r.desc}>{r.desc}</td><td className="p-3 text-right font-medium">{formatCurrency(r.gross)}</td>
-                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" placeholder="0.00" value={r.ebay} onChange={e => handleUpdateImportRow(r.id, 'ebay', e.target.value)}/></td>
-                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" placeholder="0.00" value={r.ad} onChange={e => handleUpdateImportRow(r.id, 'ad', e.target.value)}/></td>
-                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" placeholder="0.00" value={r.shipping} onChange={e => handleUpdateImportRow(r.id, 'shipping', e.target.value)}/></td>
+                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" value={r.ebay} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ebay: e.target.value } : pr))}/></td>
+                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" value={r.ad} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ad: e.target.value } : pr))}/></td>
+                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" value={r.shipping} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, shipping: e.target.value } : pr))}/></td>
                     </tr>
                   ))}
                 </tbody>
@@ -638,7 +588,26 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onDelete, formatCurrency 
             <tbody className="divide-y divide-slate-100">
               {sortedRevenues.length === 0 ? <tr><td colSpan="9" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedRevenues.map(r => {
                 const totalFees = Number(r.ebay || 0) + Number(r.ad || 0) + Number(r.shipping || 0);
-                return (
+                return editingId === r.id ? (
+                  <tr key={r.id} className="bg-blue-50/50">
+                    <td className="p-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
+                    <td className="p-2"><input type="text" className={inlineInputStyle} value={editForm.orderNum} onChange={ev => setEditForm({...editForm, orderNum: ev.target.value})} /></td>
+                    <td className="p-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
+                    <td className="p-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.gross} onChange={ev => setEditForm({...editForm, gross: ev.target.value})} /></td>
+                    <td className="p-2 flex space-x-1">
+                      <input type="number" step="0.01" className={`${inlineInputStyle} w-16`} placeholder="eBay" title="eBay Fee" value={editForm.ebay} onChange={ev => setEditForm({...editForm, ebay: ev.target.value})} />
+                      <input type="number" step="0.01" className={`${inlineInputStyle} w-16`} placeholder="Ad" title="Ad Fee" value={editForm.ad} onChange={ev => setEditForm({...editForm, ad: ev.target.value})} />
+                      <input type="number" step="0.01" className={`${inlineInputStyle} w-16`} placeholder="Ship" title="Shipping" value={editForm.shipping} onChange={ev => setEditForm({...editForm, shipping: ev.target.value})} />
+                    </td>
+                    <td className="p-4 text-right text-slate-400">-</td>
+                    <td className="p-4 text-right text-slate-400">-</td>
+                    <td className="p-4 text-right text-slate-400">-</td>
+                    <td className="p-2 text-right space-x-3">
+                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700"><Check size={18}/></button>
+                      <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-600"><X size={18}/></button>
+                    </td>
+                  </tr>
+                ) : (
                   <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">{r.date}</td>
                     <td className="p-4 text-slate-500 font-mono text-xs">{r.orderNum || '-'}</td>
@@ -648,7 +617,10 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onDelete, formatCurrency 
                     <td className="p-4 text-right font-medium text-blue-600">{formatCurrency(r.net)}</td>
                     <td className="p-4 text-right font-bold text-emerald-600">{formatCurrency(r.trueProfit)}</td>
                     <td className="p-4 text-right font-bold text-emerald-600">{r.margin.toFixed(1)}%</td>
-                    <td className="p-4 text-right"><button onClick={() => onDelete(r.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button></td>
+                    <td className="p-4 text-right space-x-3">
+                      <button onClick={() => startEdit(r)} className="text-slate-400 hover:text-blue-600"><Edit2 size={16} /></button>
+                      <button onClick={() => onDelete(r.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={16} /></button>
+                    </td>
                   </tr>
                 );
               })}
@@ -660,12 +632,17 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onDelete, formatCurrency 
   );
 }
 
-function ExpenseTracker({ expenses, onAdd, onDelete, formatCurrency }) {
+function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency }) {
   const [formData, setFormData] = useState({ date: '', desc: '', category: 'Supplies', amount: '' });
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
   const categories = ['Supplies', 'Advertising', 'Travel', 'Equipment', 'Office'];
   const { items: sortedExpenses, requestSort, sortConfig } = useSortableData(expenses);
 
   const addRow = (e) => { e.preventDefault(); if (!formData.amount) return; onAdd(formData); setFormData({ date: '', desc: '', category: 'Supplies', amount: '' }); };
+  const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item, category: item.category || 'Supplies' }); };
+  const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
+
   const handleExport = () => {
     const headers = ['Date', 'Description', 'Category', 'Amount'];
     const data = sortedExpenses.map(e => [e.date, e.desc, e.category, e.amount]);
@@ -703,10 +680,31 @@ function ExpenseTracker({ expenses, onAdd, onDelete, formatCurrency }) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {sortedExpenses.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedExpenses.map(e => (
-                <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-4">{e.date}</td><td className="p-4">{e.desc}</td><td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{e.category}</span></td>
-                  <td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td><td className="p-4 text-right"><button onClick={() => onDelete(e.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
-                </tr>
+                editingId === e.id ? (
+                  <tr key={e.id} className="bg-blue-50/50">
+                    <td className="p-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
+                    <td className="p-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
+                    <td className="p-2">
+                      <select className={inlineInputStyle} value={editForm.category} onChange={ev => setEditForm({...editForm, category: ev.target.value})}>
+                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </td>
+                    <td className="p-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.amount} onChange={ev => setEditForm({...editForm, amount: ev.target.value})} /></td>
+                    <td className="p-2 text-right space-x-3">
+                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700"><Check size={18}/></button>
+                      <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-600"><X size={18}/></button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={e.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-4">{e.date}</td><td className="p-4">{e.desc}</td><td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{e.category}</span></td>
+                    <td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td>
+                    <td className="p-4 text-right space-x-3">
+                      <button onClick={() => startEdit(e)} className="text-slate-400 hover:text-blue-600"><Edit2 size={16}/></button>
+                      <button onClick={() => onDelete(e.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                    </td>
+                  </tr>
+                )
               ))}
             </tbody>
           </table>
@@ -716,32 +714,41 @@ function ExpenseTracker({ expenses, onAdd, onDelete, formatCurrency }) {
   );
 }
 
-function OwnerEquity({ equities, initialGoal, onAdd, onDelete, formatCurrency }) {
-  const [formData, setFormData] = useState({ date: '', desc: '', amount: '' });
+function OwnerEquity({ equities, initialGoal, onAdd, onUpdate, onDelete, formatCurrency }) {
+  const [formData, setFormData] = useState({ date: '', desc: '', category: 'Recoup Investment', amount: '' });
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const categories = ['Recoup Investment', 'Golf Fund', 'Amex Transfer (Op Cash)', 'Other Draw'];
   const { items: sortedEquities, requestSort, sortConfig } = useSortableData(equities);
 
-  const addRow = (e) => { e.preventDefault(); onAdd(formData); setFormData({ date: '', desc: '', amount: '' }); };
+  const addRow = (e) => { e.preventDefault(); onAdd(formData); setFormData({ date: '', desc: '', category: 'Recoup Investment', amount: '' }); };
+  const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item, category: item.category || 'Recoup Investment' }); };
+  const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
+
   const handleExport = () => {
-    const headers = ['Date', 'Description', 'Amount'];
-    const data = sortedEquities.map(e => [e.date, e.desc, e.amount]);
-    exportToCsv('Apex_Owner_Equity.csv', [headers, ...data]);
+    const headers = ['Date', 'Description', 'Category', 'Amount'];
+    const data = sortedEquities.map(e => [e.date, e.desc, e.category || 'Recoup Investment', e.amount]);
+    exportToCsv('Apex_Payouts_Transfers.csv', [headers, ...data]);
   };
 
   return (
     <div className="space-y-6 animate-in fade-in">
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4 text-slate-800">Record Payout (Recouping {formatCurrency(initialGoal)})</h2>
-        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <h2 className="text-lg font-semibold mb-4 text-slate-800">Record Payout or Transfer</h2>
+        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <input type="date" className="input-field" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
           <input type="text" placeholder="Description (e.g. Owner Draw)" className="input-field" value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
+          <select className="input-field" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
           <input type="number" step="0.01" placeholder="Amount ($)" className="input-field" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
-          <button type="submit" className="sm:col-span-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Log Equity Payment</button>
+          <button type="submit" className="sm:col-span-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Log Transaction</button>
         </form>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h3 className="font-semibold text-slate-700">Payout History</h3>
+          <h3 className="font-semibold text-slate-700">Transaction History</h3>
           <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm"><Download size={16} className="mr-1.5" /> Export CSV</button>
         </div>
         <div className="overflow-x-auto">
@@ -750,16 +757,40 @@ function OwnerEquity({ equities, initialGoal, onAdd, onDelete, formatCurrency })
               <tr>
                 <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Category" sortKey="category" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Amount" sortKey="amount" currentSort={sortConfig} requestSort={requestSort} alignRight />
                 <th className="p-4"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sortedEquities.length === 0 ? <tr><td colSpan="4" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedEquities.map(e => (
-                <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-4">{e.date}</td><td className="p-4">{e.desc}</td><td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td>
-                  <td className="p-4 text-right"><button onClick={() => onDelete(e.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
-                </tr>
+              {sortedEquities.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedEquities.map(e => (
+                editingId === e.id ? (
+                  <tr key={e.id} className="bg-blue-50/50">
+                    <td className="p-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
+                    <td className="p-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
+                    <td className="p-2">
+                      <select className={inlineInputStyle} value={editForm.category} onChange={ev => setEditForm({...editForm, category: ev.target.value})}>
+                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </td>
+                    <td className="p-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.amount} onChange={ev => setEditForm({...editForm, amount: ev.target.value})} /></td>
+                    <td className="p-2 text-right space-x-3">
+                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700"><Check size={18}/></button>
+                      <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-600"><X size={18}/></button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={e.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-4">{e.date}</td>
+                    <td className="p-4">{e.desc}</td>
+                    <td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{e.category || 'Recoup Investment'}</span></td>
+                    <td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td>
+                    <td className="p-4 text-right space-x-3">
+                      <button onClick={() => startEdit(e)} className="text-slate-400 hover:text-blue-600"><Edit2 size={16}/></button>
+                      <button onClick={() => onDelete(e.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                    </td>
+                  </tr>
+                )
               ))}
             </tbody>
           </table>
@@ -769,14 +800,19 @@ function OwnerEquity({ equities, initialGoal, onAdd, onDelete, formatCurrency })
   );
 }
 
-function MileageLog({ mileages, onAdd, onDelete, formatCurrency }) {
+function MileageLog({ mileages, onAdd, onUpdate, onDelete, formatCurrency }) {
   const [formData, setFormData] = useState({ date: '', desc: '', miles: '' });
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
   const RATE_2026 = 0.725;
   
   const enrichedMileages = useMemo(() => mileages.map(m => ({ ...m, deduction: m.miles * RATE_2026 })), [mileages]);
   const { items: sortedMileages, requestSort, sortConfig } = useSortableData(enrichedMileages);
 
   const addRow = (e) => { e.preventDefault(); onAdd(formData); setFormData({ date: '', desc: '', miles: '' }); };
+  const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item }); };
+  const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
+
   const handleExport = () => {
     const headers = ['Date', 'Trip Description', 'Miles', 'Deduction Value'];
     const data = sortedMileages.map(m => [m.date, m.desc, m.miles, m.deduction]);
@@ -813,10 +849,27 @@ function MileageLog({ mileages, onAdd, onDelete, formatCurrency }) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {sortedMileages.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedMileages.map(m => (
-                <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-4">{m.date}</td><td className="p-4">{m.desc}</td><td className="p-4 text-right font-medium">{m.miles} mi</td>
-                  <td className="p-4 text-right font-bold text-blue-600">{formatCurrency(m.deduction)}</td><td className="p-4 text-right"><button onClick={() => onDelete(m.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
-                </tr>
+                editingId === m.id ? (
+                  <tr key={m.id} className="bg-blue-50/50">
+                    <td className="p-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
+                    <td className="p-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
+                    <td className="p-2"><input type="number" step="0.1" className={inlineInputStyle} value={editForm.miles} onChange={ev => setEditForm({...editForm, miles: ev.target.value})} /></td>
+                    <td className="p-4 text-right text-slate-400">-</td>
+                    <td className="p-2 text-right space-x-3">
+                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700"><Check size={18}/></button>
+                      <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-600"><X size={18}/></button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-4">{m.date}</td><td className="p-4">{m.desc}</td><td className="p-4 text-right font-medium">{m.miles} mi</td>
+                    <td className="p-4 text-right font-bold text-blue-600">{formatCurrency(m.deduction)}</td>
+                    <td className="p-4 text-right space-x-3">
+                      <button onClick={() => startEdit(m)} className="text-slate-400 hover:text-blue-600"><Edit2 size={16}/></button>
+                      <button onClick={() => onDelete(m.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                    </td>
+                  </tr>
+                )
               ))}
             </tbody>
           </table>
@@ -903,7 +956,7 @@ function TaxSummary({ revenues, expenses, mileages, formatCurrency }) {
         <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-200">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">Apex Performance Concepts LLC</h2>
-            <p className="text-sm font-medium text-slate-500 mt-1">Schedule C (Form 1040) Tax Summary</p>
+            <p className="text-sm font-medium text-slate-50 mt-1">Schedule C (Form 1040) Tax Summary</p>
           </div>
           <div className="text-right flex flex-col items-end">
             <button 
@@ -947,13 +1000,11 @@ function TaxSummary({ revenues, expenses, mileages, formatCurrency }) {
   );
 }
 
-// Ensure basic Tailwind + custom CSS works 
 const style = document.createElement('style');
 style.textContent = `
   .input-field { width: 100%; padding: 0.625rem 0.875rem; border-radius: 0.5rem; border: 1px solid #e2e8f0; background-color: #f8fafc; font-size: 0.875rem; transition: all 0.2s; outline: none; }
   .input-field:focus { border-color: #3b82f6; background-color: #ffffff; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
   .hide-scrollbar::-webkit-scrollbar { display: none; } .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-  
   @media print {
     .no-print { display: none !important; }
     body { background-color: white !important; -webkit-print-color-adjust: exact; }
