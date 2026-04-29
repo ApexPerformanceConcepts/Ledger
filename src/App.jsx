@@ -1,13 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
-  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X
+  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X, ArrowUpDown, ChevronUp, ChevronDown, PieChart, BarChart3, Printer
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 // --- FIREBASE SETUP ---
-// Smart config: Uses preview environment if here, or your keys if on Vercel
 const isPreviewEnv = typeof __firebase_config !== 'undefined';
 const firebaseConfig = isPreviewEnv ? JSON.parse(__firebase_config) : {
   apiKey: "AIzaSyAXtaglk0mUuQyknLmyGuT6yoB8a0KYH7g",
@@ -24,11 +23,10 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-// Smart paths for local vs canvas
 const getColRef = (colName) => isPreviewEnv ? collection(db, 'artifacts', appId, 'public', 'data', colName) : collection(db, colName);
 const getDocRef = (colName, docId) => isPreviewEnv ? doc(db, 'artifacts', appId, 'public', 'data', colName, docId) : doc(db, colName, docId);
 
-// --- HELPER: CSV EXPORT & IMPORT ---
+// --- HELPERS ---
 const exportToCsv = (filename, rows) => {
   const escapeCsv = (val) => '"' + String(val || '').replace(/"/g, '""') + '"';
   const csvContent = rows.map(row => row.map(escapeCsv).join(",")).join("\n");
@@ -46,39 +44,79 @@ const exportToCsv = (filename, rows) => {
 };
 
 const parseCSV = (text) => {
-  const rows = [];
-  let currentRow = [];
-  let currentCell = '';
-  let inQuotes = false;
+  const rows = []; let currentRow = []; let currentCell = ''; let inQuotes = false;
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (inQuotes) {
       if (char === '"') {
-        if (i + 1 < text.length && text[i + 1] === '"') {
-          currentCell += '"'; i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        currentCell += char;
-      }
+        if (i + 1 < text.length && text[i + 1] === '"') { currentCell += '"'; i++; } 
+        else { inQuotes = false; }
+      } else { currentCell += char; }
     } else {
-      if (char === '"') {
-        inQuotes = true;
-      } else if (char === ',') {
-        currentRow.push(currentCell); currentCell = '';
-      } else if (char === '\n' || char === '\r') {
-        currentRow.push(currentCell); rows.push(currentRow);
-        currentRow = []; currentCell = '';
+      if (char === '"') { inQuotes = true; } 
+      else if (char === ',') { currentRow.push(currentCell); currentCell = ''; } 
+      else if (char === '\n' || char === '\r') {
+        currentRow.push(currentCell); rows.push(currentRow); currentRow = []; currentCell = '';
         if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') i++;
-      } else {
-        currentCell += char;
-      }
+      } else { currentCell += char; }
     }
   }
   if (currentCell || text[text.length - 1] === ',') currentRow.push(currentCell);
   if (currentRow.length > 0) rows.push(currentRow);
   return rows;
+};
+
+// --- CUSTOM HOOK FOR SORTING ---
+const useSortableData = (items, defaultKey = 'date') => {
+  const [sortConfig, setSortConfig] = useState({ key: defaultKey, direction: 'descending' });
+
+  const sortedItems = useMemo(() => {
+    let sortableItems = [...items];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        let aVal = a[sortConfig.key];
+        let bVal = b[sortConfig.key];
+        if (aVal === undefined || aVal === null || aVal === '') aVal = '';
+        if (bVal === undefined || bVal === null || bVal === '') bVal = '';
+
+        if (!isNaN(aVal) && !isNaN(bVal) && aVal !== '' && bVal !== '') {
+          aVal = Number(aVal); bVal = Number(bVal);
+        } else if (sortConfig.key === 'date') {
+          aVal = new Date(aVal).getTime() || 0; bVal = new Date(bVal).getTime() || 0;
+        } else {
+          aVal = String(aVal).toLowerCase(); bVal = String(bVal).toLowerCase();
+        }
+
+        if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [items, sortConfig]);
+
+  const requestSort = (key) => {
+    let direction = 'ascending';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') { direction = 'descending'; }
+    setSortConfig({ key, direction });
+  };
+
+  return { items: sortedItems, requestSort, sortConfig };
+};
+
+// --- REUSABLE HEADER COMPONENT ---
+const SortableHeader = ({ label, sortKey, currentSort, requestSort, alignRight, textColor }) => {
+  const isActive = currentSort?.key === sortKey;
+  return (
+    <th className={`p-4 font-medium cursor-pointer hover:bg-slate-100 transition-colors group select-none ${textColor || 'text-slate-500'}`} onClick={() => requestSort(sortKey)}>
+      <div className={`flex items-center space-x-1 ${alignRight ? 'justify-end' : ''}`}>
+        <span>{label}</span>
+        <span className={`${isActive ? 'text-blue-500' : 'text-slate-300 opacity-0 group-hover:opacity-100'}`}>
+          {isActive ? (currentSort.direction === 'ascending' ? <ChevronUp size={14} /> : <ChevronDown size={14} />) : <ArrowUpDown size={14} />}
+        </span>
+      </div>
+    </th>
+  );
 };
 
 export default function App() {
@@ -136,7 +174,7 @@ export default function App() {
     return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubCogs(); unsubSettings(); };
   }, [user]);
 
-  // --- MUTATION HANDLERS (Saving to Cloud) ---
+  // --- MUTATION HANDLERS ---
   const handleAdd = async (collectionName, data) => {
     if (!user) return;
     await setDoc(getDocRef(collectionName, Date.now().toString() + Math.random().toString(36).substr(2, 5)), data);
@@ -200,8 +238,8 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans print-bg-white">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm no-print">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="py-4 flex justify-between items-center">
             <div>
@@ -211,6 +249,7 @@ export default function App() {
           </div>
           <div className="flex overflow-x-auto hide-scrollbar border-t border-slate-100">
             <TabButton id="dashboard" icon={LayoutDashboard} label="Dashboard" />
+            <TabButton id="analytics" icon={PieChart} label="Analytics" />
             <TabButton id="revenue" icon={DollarSign} label="Revenue Log" />
             <TabButton id="expenses" icon={Receipt} label="Expense Tracker" />
             <TabButton id="equity" icon={Wallet} label="Owner Equity" />
@@ -221,7 +260,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print-no-padding">
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <h2 className="text-xl font-semibold mb-4 text-slate-800">Command Center</h2>
@@ -246,7 +285,8 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'revenue' && <RevenueLog revenues={revenues} onAdd={(data) => handleAdd('revenues', data)} onDelete={(id) => handleDelete('revenues', id)} formatCurrency={formatCurrency} />}
+        {activeTab === 'analytics' && <Analytics revenues={revenues} expenses={expenses} formatCurrency={formatCurrency} />}
+        {activeTab === 'revenue' && <RevenueLog revenues={revenues} costPerTrainer={costPerTrainer} onAdd={(data) => handleAdd('revenues', data)} onDelete={(id) => handleDelete('revenues', id)} formatCurrency={formatCurrency} />}
         {activeTab === 'expenses' && <ExpenseTracker expenses={expenses} onAdd={(data) => handleAdd('expenses', data)} onDelete={(id) => handleDelete('expenses', id)} formatCurrency={formatCurrency} />}
         {activeTab === 'equity' && <OwnerEquity equities={equities} initialGoal={initialGoal} onAdd={(data) => handleAdd('equities', data)} onDelete={(id) => handleDelete('equities', id)} formatCurrency={formatCurrency} />}
         {activeTab === 'mileage' && <MileageLog mileages={mileages} onAdd={(data) => handleAdd('mileages', data)} onDelete={(id) => handleDelete('mileages', id)} formatCurrency={formatCurrency} />}
@@ -258,6 +298,163 @@ export default function App() {
 }
 
 // --- SUB-COMPONENTS ---
+
+function Analytics({ revenues, expenses, formatCurrency }) {
+  // 1. Prepare Data for Bar Chart (Month over Month)
+  const monthlyData = useMemo(() => {
+    const dataMap = {};
+    
+    revenues.forEach(r => {
+      if (!r.date) return;
+      const month = r.date.substring(0, 7); // 'YYYY-MM'
+      if (!dataMap[month]) dataMap[month] = { month, rev: 0, exp: 0 };
+      dataMap[month].rev += Number(r.gross || 0);
+    });
+
+    expenses.forEach(e => {
+      if (!e.date) return;
+      const month = e.date.substring(0, 7);
+      if (!dataMap[month]) dataMap[month] = { month, rev: 0, exp: 0 };
+      dataMap[month].exp += Number(e.amount || 0);
+    });
+
+    // Sort chronologically
+    return Object.values(dataMap).sort((a, b) => a.month.localeCompare(b.month));
+  }, [revenues, expenses]);
+
+  // Find max value to scale the chart bars
+  const maxBarValue = Math.max(10, ...monthlyData.map(d => Math.max(d.rev, d.exp)));
+
+  // 2. Prepare Data for Pie/Donut Chart (Expenses Breakdown)
+  const categoryData = useMemo(() => {
+    const totals = {};
+    let grandTotal = 0;
+    expenses.forEach(e => {
+      const amt = Number(e.amount || 0);
+      totals[e.category] = (totals[e.category] || 0) + amt;
+      grandTotal += amt;
+    });
+
+    const colors = {
+      'Supplies': '#3b82f6', // blue
+      'Advertising': '#f59e0b', // amber
+      'Travel': '#10b981', // emerald
+      'Equipment': '#8b5cf6', // purple
+      'Office': '#ef4444' // red
+    };
+
+    let currentOffset = 0;
+    return Object.keys(totals).map(cat => {
+      const pct = grandTotal > 0 ? (totals[cat] / grandTotal) * 100 : 0;
+      const offset = currentOffset;
+      currentOffset += pct;
+      return { category: cat, amount: totals[cat], pct, offset, color: colors[cat] || '#94a3b8' };
+    }).sort((a, b) => b.amount - a.amount);
+  }, [expenses]);
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      <h2 className="text-xl font-semibold mb-4 text-slate-800">Analytics Dashboard</h2>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Bar Chart: Revenue vs Expenses */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-semibold text-slate-700 flex items-center"><BarChart3 size={18} className="mr-2 text-slate-400"/> Cash Flow by Month</h3>
+            <div className="flex items-center space-x-4 text-xs">
+              <div className="flex items-center"><span className="w-3 h-3 rounded-sm bg-blue-500 mr-1.5"></span> Revenue</div>
+              <div className="flex items-center"><span className="w-3 h-3 rounded-sm bg-orange-400 mr-1.5"></span> Expenses</div>
+            </div>
+          </div>
+          
+          <div className="flex-1 min-h-[250px] flex items-end space-x-2 sm:space-x-6 pb-6 border-b border-slate-100 overflow-x-auto hide-scrollbar pt-6">
+            {monthlyData.length === 0 ? (
+               <div className="w-full text-center text-slate-400 text-sm pb-10">No data to display yet.</div>
+            ) : (
+              monthlyData.map((data) => {
+                const [year, month] = data.month.split('-');
+                const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'short' });
+                const revHeight = Math.max(2, (data.rev / maxBarValue) * 100);
+                const expHeight = Math.max(2, (data.exp / maxBarValue) * 100);
+                
+                return (
+                  <div key={data.month} className="flex flex-col items-center flex-1 min-w-[50px] group">
+                    <div className="flex items-end justify-center space-x-1 w-full h-48 relative">
+                      {/* Revenue Bar */}
+                      <div className="w-1/2 bg-blue-500 rounded-t-sm transition-all duration-500 relative" style={{ height: `${revHeight}%` }}>
+                        <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+                          Rev: {formatCurrency(data.rev)}
+                        </div>
+                      </div>
+                      {/* Expense Bar */}
+                      <div className="w-1/2 bg-orange-400 rounded-t-sm transition-all duration-500 relative" style={{ height: `${expHeight}%` }}>
+                        <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+                          Exp: {formatCurrency(data.exp)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 text-xs font-medium text-slate-500">{monthName} '{year.slice(2)}</div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Donut Chart: Expense Breakdown */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col">
+          <h3 className="font-semibold text-slate-700 flex items-center mb-6"><PieChart size={18} className="mr-2 text-slate-400"/> Operating Expenses Breakdown</h3>
+          
+          {categoryData.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">No expenses logged yet.</div>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-center justify-center flex-1 gap-8">
+              {/* SVG Donut */}
+              <div className="relative w-48 h-48">
+                <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90 rounded-full">
+                  {categoryData.map((slice) => (
+                    <circle 
+                      key={slice.category} r="12" cx="16" cy="16" 
+                      fill="transparent" stroke={slice.color} strokeWidth="8"
+                      strokeDasharray={`${slice.pct > 0 ? slice.pct : 0} 100`} 
+                      strokeDashoffset={`-${slice.offset}`}
+                      className="transition-all duration-1000 ease-out"
+                    />
+                  ))}
+                  {/* Inner white circle for donut hole */}
+                  <circle r="8" cx="16" cy="16" fill="white" />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-xs text-slate-400 uppercase tracking-widest font-bold">Total</span>
+                  <span className="text-lg font-bold text-slate-700">{formatCurrency(categoryData.reduce((s, c) => s + c.amount, 0))}</span>
+                </div>
+              </div>
+
+              {/* Legend */}
+              <div className="flex flex-col space-y-3 w-full sm:w-auto">
+                {categoryData.map(slice => (
+                  <div key={slice.category} className="flex items-center justify-between space-x-4">
+                    <div className="flex items-center">
+                      <span className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: slice.color }}></span>
+                      <span className="text-sm text-slate-600">{slice.category}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm font-medium text-slate-800">{formatCurrency(slice.amount)}</span>
+                      <span className="text-xs text-slate-400 w-8 text-right">{Math.round(slice.pct)}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 function ProgressCard({ totalEquityPaid, initialGoal, remainingToRecoup, formatCurrency, onUpdateGoal }) {
   const [isEditing, setIsEditing] = useState(false);
   const [tempGoal, setTempGoal] = useState(initialGoal);
@@ -298,19 +495,26 @@ function DashboardCard({ title, amount, subtitle, color, isNegative, highlight }
   );
 }
 
-function RevenueLog({ revenues, onAdd, onDelete, formatCurrency }) {
+function RevenueLog({ revenues, costPerTrainer, onAdd, onDelete, formatCurrency }) {
   const [formData, setFormData] = useState({ date: '', orderNum: '', desc: '', gross: '', ebay: '', ad: '', shipping: '' });
   const [importPreview, setImportPreview] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Pre-calculate net payout, true profit, and margin
+  const enrichedRevenues = useMemo(() => revenues.map(r => {
+    const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0);
+    const trueProfit = net - costPerTrainer;
+    const margin = Number(r.gross) > 0 ? (trueProfit / Number(r.gross)) * 100 : 0;
+    return { ...r, net, trueProfit, margin };
+  }), [revenues, costPerTrainer]);
+
+  const { items: sortedRevenues, requestSort, sortConfig } = useSortableData(enrichedRevenues);
+
   const addRow = (e) => { e.preventDefault(); if (!formData.gross) return; onAdd(formData); setFormData({ date: '', orderNum: '', desc: '', gross: '', ebay: '', ad: '', shipping: '' }); };
 
   const handleExport = () => {
-    const headers = ['Date', 'Order #', 'Description', 'Gross', 'eBay Fee', 'Ad Fee', 'Shipping', 'Net Payout'];
-    const data = revenues.map(r => {
-      const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0);
-      return [r.date, r.orderNum, r.desc, r.gross, r.ebay || 0, r.ad || 0, r.shipping || 0, net];
-    });
+    const headers = ['Date', 'Order #', 'Description', 'Gross', 'eBay Fee', 'Ad Fee', 'Shipping', 'Net Payout', 'True Profit', 'Margin %'];
+    const data = sortedRevenues.map(r => [r.date, r.orderNum, r.desc, r.gross, r.ebay || 0, r.ad || 0, r.shipping || 0, r.net, r.trueProfit, r.margin.toFixed(1)]);
     exportToCsv('Apex_Revenues.csv', [headers, ...data]);
   };
 
@@ -323,13 +527,8 @@ function RevenueLog({ revenues, onAdd, onDelete, formatCurrency }) {
       const parsed = parseCSV(text);
       
       let headerIdx = 0;
-      while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].includes('Order Number'))) {
-        headerIdx++;
-      }
-      if (headerIdx >= parsed.length) { 
-        alert("Could not find standard eBay headers in this CSV."); 
-        return; 
-      }
+      while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].includes('Order Number'))) headerIdx++;
+      if (headerIdx >= parsed.length) { alert("Could not find standard eBay headers in this CSV."); return; }
 
       const headers = parsed[headerIdx];
       const dateIdx = headers.indexOf('Sale Date');
@@ -348,21 +547,12 @@ function RevenueLog({ revenues, onAdd, onDelete, formatCurrency }) {
         const rawDate = row[dateIdx] || '';
         const dateParts = rawDate.split('-');
         let formattedDate = rawDate;
-        if (dateParts.length === 3) {
-           formattedDate = `20${dateParts[2]}-${months[dateParts[0]] || '01'}-${dateParts[1].padStart(2, '0')}`;
-        }
+        if (dateParts.length === 3) formattedDate = `20${dateParts[2]}-${months[dateParts[0]] || '01'}-${dateParts[1].padStart(2, '0')}`;
 
         const cleanNum = (str) => Number((str || '').replace(/[^0-9.-]+/g,""));
         const gross = cleanNum(row[soldForIdx]) + cleanNum(row[shipHandIdx]);
 
-        newRows.push({
-          id: Date.now() + i,
-          date: formattedDate,
-          orderNum: row[orderIdx],
-          desc: row[titleIdx],
-          gross: gross.toFixed(2),
-          ebay: '', ad: '', shipping: ''
-        });
+        newRows.push({ id: Date.now() + i, date: formattedDate, orderNum: row[orderIdx], desc: row[titleIdx], gross: gross.toFixed(2), ebay: '', ad: '', shipping: '' });
       }
       setImportPreview(newRows);
     };
@@ -370,47 +560,27 @@ function RevenueLog({ revenues, onAdd, onDelete, formatCurrency }) {
     e.target.value = '';
   };
 
-  const handleUpdateImportRow = (id, field, value) => {
-    setImportPreview(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
-  };
-
-  const confirmImport = () => {
-    importPreview.forEach(r => {
-      onAdd({ date: r.date, orderNum: r.orderNum, desc: r.desc, gross: r.gross, ebay: r.ebay, ad: r.ad, shipping: r.shipping });
-    });
-    setImportPreview(null);
-  };
+  const handleUpdateImportRow = (id, field, value) => setImportPreview(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+  const confirmImport = () => { importPreview.forEach(r => { onAdd({ date: r.date, orderNum: r.orderNum, desc: r.desc, gross: r.gross, ebay: r.ebay, ad: r.ad, shipping: r.shipping }); }); setImportPreview(null); };
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      
-      {/* Import Preview Modal */}
       {importPreview && (
         <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-              <div>
-                <h2 className="text-xl font-bold text-slate-800">Review & Add Fees</h2>
-                <p className="text-sm text-slate-500">eBay Orders Reports don't include fees or label costs. Add them here before saving!</p>
-              </div>
+              <div><h2 className="text-xl font-bold text-slate-800">Review & Add Fees</h2><p className="text-sm text-slate-500">eBay Orders Reports don't include fees or label costs. Add them here before saving!</p></div>
               <button onClick={() => setImportPreview(null)} className="text-slate-400 hover:text-red-500"><X size={24}/></button>
             </div>
-            
             <div className="overflow-y-auto p-6 bg-slate-100 flex-1">
               <table className="w-full text-left text-sm whitespace-nowrap bg-white rounded shadow-sm">
-                <thead className="bg-slate-800 text-slate-100 sticky top-0">
-                  <tr>
-                    <th className="p-3">Date</th><th className="p-3">Order #</th><th className="p-3 w-1/3">Item</th>
-                    <th className="p-3 text-right">Gross Sale</th>
-                    <th className="p-3">eBay Fee $</th><th className="p-3">Ad Fee $</th><th className="p-3">Shipping Label $</th>
-                  </tr>
+                <thead className="bg-slate-800 text-slate-100 sticky top-0 z-10">
+                  <tr><th className="p-3">Date</th><th className="p-3">Order #</th><th className="p-3 w-1/3">Item</th><th className="p-3 text-right">Gross Sale</th><th className="p-3">eBay Fee $</th><th className="p-3">Ad Fee $</th><th className="p-3">Shipping Label $</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {importPreview.map(r => (
                     <tr key={r.id} className="hover:bg-slate-50">
-                      <td className="p-3">{r.date}</td><td className="p-3 font-mono text-xs text-slate-500">{r.orderNum}</td>
-                      <td className="p-3 truncate max-w-xs" title={r.desc}>{r.desc}</td>
-                      <td className="p-3 text-right font-medium">{formatCurrency(r.gross)}</td>
+                      <td className="p-3">{r.date}</td><td className="p-3 font-mono text-xs text-slate-500">{r.orderNum}</td><td className="p-3 truncate max-w-xs" title={r.desc}>{r.desc}</td><td className="p-3 text-right font-medium">{formatCurrency(r.gross)}</td>
                       <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" placeholder="0.00" value={r.ebay} onChange={e => handleUpdateImportRow(r.id, 'ebay', e.target.value)}/></td>
                       <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" placeholder="0.00" value={r.ad} onChange={e => handleUpdateImportRow(r.id, 'ad', e.target.value)}/></td>
                       <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" placeholder="0.00" value={r.shipping} onChange={e => handleUpdateImportRow(r.id, 'shipping', e.target.value)}/></td>
@@ -419,12 +589,9 @@ function RevenueLog({ revenues, onAdd, onDelete, formatCurrency }) {
                 </tbody>
               </table>
             </div>
-
             <div className="p-4 border-t border-slate-200 bg-white flex justify-end space-x-3">
               <button onClick={() => setImportPreview(null)} className="px-4 py-2 rounded text-slate-600 hover:bg-slate-100 font-medium transition-colors">Cancel</button>
-              <button onClick={confirmImport} className="px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center transition-colors">
-                <Check size={18} className="mr-2"/> Save {importPreview.length} Orders to Ledger
-              </button>
+              <button onClick={confirmImport} className="px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center transition-colors"><Check size={18} className="mr-2"/> Save {importPreview.length} Orders</button>
             </div>
           </div>
         </div>
@@ -440,44 +607,47 @@ function RevenueLog({ revenues, onAdd, onDelete, formatCurrency }) {
           <input type="number" step="0.01" placeholder="eBay Fee ($)" className="input-field" value={formData.ebay} onChange={e => setFormData({...formData, ebay: e.target.value})} />
           <input type="number" step="0.01" placeholder="Ad Fee ($)" className="input-field" value={formData.ad} onChange={e => setFormData({...formData, ad: e.target.value})} />
           <input type="number" step="0.01" placeholder="Shipping ($)" className="input-field" value={formData.shipping} onChange={e => setFormData({...formData, shipping: e.target.value})} />
-          <button type="submit" className="md:col-span-7 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors">
-            <Plus size={18} className="mr-2" /> Add Sale
-          </button>
+          <button type="submit" className="md:col-span-7 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Add Sale</button>
         </form>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h3 className="font-semibold text-slate-700">Sales History</h3>
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <h3 className="font-semibold text-slate-700">Sales History (COGS per unit: {formatCurrency(costPerTrainer)})</h3>
           <div className="flex space-x-4">
             <input type="file" accept=".csv" id="csv-upload" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
-            <button onClick={() => fileInputRef.current.click()} className="text-sm font-medium text-slate-600 hover:text-slate-800 flex items-center transition-colors border border-slate-300 px-3 py-1.5 rounded-md bg-white shadow-sm">
-              <Upload size={16} className="mr-1.5" /> Import eBay CSV
-            </button>
-            <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm">
-              <Download size={16} className="mr-1.5" /> Export CSV
-            </button>
+            <button onClick={() => fileInputRef.current.click()} className="text-sm font-medium text-slate-600 hover:text-slate-800 flex items-center transition-colors border border-slate-300 px-3 py-1.5 rounded-md bg-white shadow-sm"><Upload size={16} className="mr-1.5" /> Import eBay CSV</button>
+            <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm"><Download size={16} className="mr-1.5" /> Export CSV</button>
           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-white border-b border-slate-200 text-slate-500">
               <tr>
-                <th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Order #</th><th className="p-4 font-medium">Description</th>
-                <th className="p-4 font-medium text-right">Gross</th><th className="p-4 font-medium text-right text-red-500">eBay Fee</th>
-                <th className="p-4 font-medium text-right text-red-500">Ad Fee</th><th className="p-4 font-medium text-right text-red-500">Shipping</th>
-                <th className="p-4 font-medium text-right text-emerald-600">Net Payout</th><th className="p-4"></th>
+                <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Order #" sortKey="orderNum" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Gross" sortKey="gross" currentSort={sortConfig} requestSort={requestSort} alignRight />
+                <SortableHeader label="Fees & Ship" sortKey="ebay" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-red-500" />
+                <SortableHeader label="Net Payout" sortKey="net" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-blue-600" />
+                <SortableHeader label="True Profit" sortKey="trueProfit" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-emerald-600" />
+                <SortableHeader label="Margin" sortKey="margin" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-emerald-600" />
+                <th className="p-4"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {revenues.length === 0 ? <tr><td colSpan="9" className="p-4 text-center text-slate-400">No records found.</td></tr> : revenues.map(r => {
-                const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0);
+              {sortedRevenues.length === 0 ? <tr><td colSpan="9" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedRevenues.map(r => {
+                const totalFees = Number(r.ebay || 0) + Number(r.ad || 0) + Number(r.shipping || 0);
                 return (
                   <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4">{r.date}</td><td className="p-4 text-slate-500 font-mono text-xs">{r.orderNum || '-'}</td><td className="p-4 truncate max-w-xs" title={r.desc}>{r.desc}</td>
-                    <td className="p-4 text-right font-medium">{formatCurrency(r.gross)}</td><td className="p-4 text-right text-slate-500">{formatCurrency(r.ebay || 0)}</td>
-                    <td className="p-4 text-right text-slate-500">{formatCurrency(r.ad || 0)}</td><td className="p-4 text-right text-slate-500">{formatCurrency(r.shipping || 0)}</td>
-                    <td className="p-4 text-right font-bold text-emerald-600">{formatCurrency(net)}</td>
+                    <td className="p-4">{r.date}</td>
+                    <td className="p-4 text-slate-500 font-mono text-xs">{r.orderNum || '-'}</td>
+                    <td className="p-4 truncate max-w-[200px]" title={r.desc}>{r.desc}</td>
+                    <td className="p-4 text-right font-medium">{formatCurrency(r.gross)}</td>
+                    <td className="p-4 text-right text-slate-500" title={`eBay: ${formatCurrency(r.ebay || 0)} | Ad: ${formatCurrency(r.ad || 0)} | Ship: ${formatCurrency(r.shipping || 0)}`}>{formatCurrency(totalFees)}</td>
+                    <td className="p-4 text-right font-medium text-blue-600">{formatCurrency(r.net)}</td>
+                    <td className="p-4 text-right font-bold text-emerald-600">{formatCurrency(r.trueProfit)}</td>
+                    <td className="p-4 text-right font-bold text-emerald-600">{r.margin.toFixed(1)}%</td>
                     <td className="p-4 text-right"><button onClick={() => onDelete(r.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button></td>
                   </tr>
                 );
@@ -493,11 +663,12 @@ function RevenueLog({ revenues, onAdd, onDelete, formatCurrency }) {
 function ExpenseTracker({ expenses, onAdd, onDelete, formatCurrency }) {
   const [formData, setFormData] = useState({ date: '', desc: '', category: 'Supplies', amount: '' });
   const categories = ['Supplies', 'Advertising', 'Travel', 'Equipment', 'Office'];
-  const addRow = (e) => { e.preventDefault(); if (!formData.amount) return; onAdd(formData); setFormData({ date: '', desc: '', category: 'Supplies', amount: '' }); };
+  const { items: sortedExpenses, requestSort, sortConfig } = useSortableData(expenses);
 
+  const addRow = (e) => { e.preventDefault(); if (!formData.amount) return; onAdd(formData); setFormData({ date: '', desc: '', category: 'Supplies', amount: '' }); };
   const handleExport = () => {
     const headers = ['Date', 'Description', 'Category', 'Amount'];
-    const data = expenses.map(e => [e.date, e.desc, e.category, e.amount]);
+    const data = sortedExpenses.map(e => [e.date, e.desc, e.category, e.amount]);
     exportToCsv('Apex_Expenses.csv', [headers, ...data]);
   };
 
@@ -510,9 +681,7 @@ function ExpenseTracker({ expenses, onAdd, onDelete, formatCurrency }) {
           <input type="text" placeholder="Description" className="input-field" value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
           <select className="input-field" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
           <input type="number" step="0.01" placeholder="Amount ($)" className="input-field" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
-          <button type="submit" className="sm:col-span-4 bg-orange-500 hover:bg-orange-600 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors">
-            <Plus size={18} className="mr-2" /> Add Expense
-          </button>
+          <button type="submit" className="sm:col-span-4 bg-orange-500 hover:bg-orange-600 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Add Expense</button>
         </form>
       </div>
 
@@ -524,10 +693,16 @@ function ExpenseTracker({ expenses, onAdd, onDelete, formatCurrency }) {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-white border-b border-slate-200 text-slate-500">
-              <tr><th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Description</th><th className="p-4 font-medium">Category</th><th className="p-4 font-medium text-right">Amount</th><th className="p-4"></th></tr>
+              <tr>
+                <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Category" sortKey="category" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Amount" sortKey="amount" currentSort={sortConfig} requestSort={requestSort} alignRight />
+                <th className="p-4"></th>
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {expenses.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : expenses.map(e => (
+              {sortedExpenses.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedExpenses.map(e => (
                 <tr key={e.id} className="hover:bg-slate-50 transition-colors">
                   <td className="p-4">{e.date}</td><td className="p-4">{e.desc}</td><td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{e.category}</span></td>
                   <td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td><td className="p-4 text-right"><button onClick={() => onDelete(e.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
@@ -543,11 +718,12 @@ function ExpenseTracker({ expenses, onAdd, onDelete, formatCurrency }) {
 
 function OwnerEquity({ equities, initialGoal, onAdd, onDelete, formatCurrency }) {
   const [formData, setFormData] = useState({ date: '', desc: '', amount: '' });
-  const addRow = (e) => { e.preventDefault(); onAdd(formData); setFormData({ date: '', desc: '', amount: '' }); };
+  const { items: sortedEquities, requestSort, sortConfig } = useSortableData(equities);
 
+  const addRow = (e) => { e.preventDefault(); onAdd(formData); setFormData({ date: '', desc: '', amount: '' }); };
   const handleExport = () => {
     const headers = ['Date', 'Description', 'Amount'];
-    const data = equities.map(e => [e.date, e.desc, e.amount]);
+    const data = sortedEquities.map(e => [e.date, e.desc, e.amount]);
     exportToCsv('Apex_Owner_Equity.csv', [headers, ...data]);
   };
 
@@ -571,10 +747,15 @@ function OwnerEquity({ equities, initialGoal, onAdd, onDelete, formatCurrency })
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-white border-b border-slate-200 text-slate-500">
-              <tr><th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Description</th><th className="p-4 font-medium text-right">Amount</th><th className="p-4"></th></tr>
+              <tr>
+                <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Amount" sortKey="amount" currentSort={sortConfig} requestSort={requestSort} alignRight />
+                <th className="p-4"></th>
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {equities.length === 0 ? <tr><td colSpan="4" className="p-4 text-center text-slate-400">No records found.</td></tr> : equities.map(e => (
+              {sortedEquities.length === 0 ? <tr><td colSpan="4" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedEquities.map(e => (
                 <tr key={e.id} className="hover:bg-slate-50 transition-colors">
                   <td className="p-4">{e.date}</td><td className="p-4">{e.desc}</td><td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td>
                   <td className="p-4 text-right"><button onClick={() => onDelete(e.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
@@ -591,11 +772,14 @@ function OwnerEquity({ equities, initialGoal, onAdd, onDelete, formatCurrency })
 function MileageLog({ mileages, onAdd, onDelete, formatCurrency }) {
   const [formData, setFormData] = useState({ date: '', desc: '', miles: '' });
   const RATE_2026 = 0.725;
-  const addRow = (e) => { e.preventDefault(); onAdd(formData); setFormData({ date: '', desc: '', miles: '' }); };
+  
+  const enrichedMileages = useMemo(() => mileages.map(m => ({ ...m, deduction: m.miles * RATE_2026 })), [mileages]);
+  const { items: sortedMileages, requestSort, sortConfig } = useSortableData(enrichedMileages);
 
+  const addRow = (e) => { e.preventDefault(); onAdd(formData); setFormData({ date: '', desc: '', miles: '' }); };
   const handleExport = () => {
     const headers = ['Date', 'Trip Description', 'Miles', 'Deduction Value'];
-    const data = mileages.map(m => [m.date, m.desc, m.miles, m.miles * RATE_2026]);
+    const data = sortedMileages.map(m => [m.date, m.desc, m.miles, m.deduction]);
     exportToCsv('Apex_Mileage_Log.csv', [headers, ...data]);
   };
 
@@ -619,13 +803,19 @@ function MileageLog({ mileages, onAdd, onDelete, formatCurrency }) {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-white border-b border-slate-200 text-slate-500">
-              <tr><th className="p-4 font-medium">Date</th><th className="p-4 font-medium">Trip Description</th><th className="p-4 font-medium text-right">Miles</th><th className="p-4 font-medium text-right text-blue-600">Deduction Value</th><th className="p-4"></th></tr>
+              <tr>
+                <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Trip Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Miles" sortKey="miles" currentSort={sortConfig} requestSort={requestSort} alignRight />
+                <SortableHeader label="Deduction Value" sortKey="deduction" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-blue-600" />
+                <th className="p-4"></th>
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {mileages.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : mileages.map(m => (
+              {sortedMileages.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedMileages.map(m => (
                 <tr key={m.id} className="hover:bg-slate-50 transition-colors">
                   <td className="p-4">{m.date}</td><td className="p-4">{m.desc}</td><td className="p-4 text-right font-medium">{m.miles} mi</td>
-                  <td className="p-4 text-right font-bold text-blue-600">{formatCurrency(m.miles * RATE_2026)}</td><td className="p-4 text-right"><button onClick={() => onDelete(m.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
+                  <td className="p-4 text-right font-bold text-blue-600">{formatCurrency(m.deduction)}</td><td className="p-4 text-right"><button onClick={() => onDelete(m.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
                 </tr>
               ))}
             </tbody>
@@ -645,35 +835,28 @@ function Manufacturing({ cogs, onUpdate, costPerTrainer, petgCostPerGram, format
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-4 text-slate-800">COGS Variables</h2>
           <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-            
             <h3 className="font-medium text-slate-700">Raw Materials</h3>
             <div className="grid grid-cols-2 gap-4">
               <div><label className="block text-xs text-slate-500 mb-1">Spool Cost (PETG)</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="spoolCost" value={cogs.spoolCost} onChange={handleChange} className="input-field pl-8" /></div></div>
               <div><label className="block text-xs text-slate-500 mb-1">Grams Used</label><input type="number" name="gramsUsed" value={cogs.gramsUsed} onChange={handleChange} className="input-field" /></div>
             </div>
-            
             <div className="grid grid-cols-2 gap-4 mt-2">
               <div><label className="block text-xs text-slate-500 mb-1">Concrete Cost per lb</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="concreteCost" value={cogs.concreteCost} onChange={handleChange} className="input-field pl-8" /></div></div>
               <div><label className="block text-xs text-slate-500 mb-1">lbs Used</label><input type="number" step="0.1" name="lbsUsed" value={cogs.lbsUsed} onChange={handleChange} className="input-field" /></div>
             </div>
-
             <hr className="border-slate-100 my-4" />
-            
             <h3 className="font-medium text-slate-700">Hardware (Cost Per Trainer)</h3>
             <div className="grid grid-cols-3 gap-4">
               <div><label className="block text-xs text-slate-500 mb-1">Screws</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="screwsCost" value={cogs.screwsCost} onChange={handleChange} className="input-field pl-8" /></div></div>
               <div><label className="block text-xs text-slate-500 mb-1">Inserts</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="insertsCost" value={cogs.insertsCost} onChange={handleChange} className="input-field pl-8" /></div></div>
               <div><label className="block text-xs text-slate-500 mb-1">Washers</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="washersCost" value={cogs.washersCost} onChange={handleChange} className="input-field pl-8" /></div></div>
             </div>
-
             <hr className="border-slate-100 my-4" />
-            
             <h3 className="font-medium text-slate-700">Packaging (Cost Per Trainer)</h3>
             <div className="grid grid-cols-2 gap-4">
               <div><label className="block text-xs text-slate-500 mb-1">Box / Mailer</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="boxCost" value={cogs.boxCost} onChange={handleChange} className="input-field pl-8" /></div></div>
               <div><label className="block text-xs text-slate-500 mb-1">Bubble Wrap</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="bubbleWrapCost" value={cogs.bubbleWrapCost} onChange={handleChange} className="input-field pl-8" /></div></div>
             </div>
-
           </div>
         </div>
 
@@ -685,7 +868,6 @@ function Manufacturing({ cogs, onUpdate, costPerTrainer, petgCostPerGram, format
             <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Concrete Cost</span><span className="font-medium">{formatCurrency(cogs.concreteCost * cogs.lbsUsed)}</span></div>
             <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Hardware (Screws, Inserts, Washers)</span><span className="font-medium">{formatCurrency(Number(cogs.screwsCost || 0) + Number(cogs.insertsCost || 0) + Number(cogs.washersCost || 0))}</span></div>
             <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Packaging (Box & Wrap)</span><span className="font-medium">{formatCurrency(Number(cogs.boxCost || 0) + Number(cogs.bubbleWrapCost || 0))}</span></div>
-            
             <div className="pt-4 flex justify-between items-center"><span className="text-lg font-bold text-slate-200">Total True Cost:</span><span className="text-3xl font-extrabold text-emerald-400">{formatCurrency(costPerTrainer)}</span></div>
           </div>
         </div>
@@ -715,21 +897,45 @@ function TaxSummary({ revenues, expenses, mileages, formatCurrency }) {
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200">
-          <div><h2 className="text-xl font-bold text-slate-800">Schedule C Preparer</h2></div>
-          <div className="text-right"><p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tax Year</p><p className="text-xl font-bold text-indigo-600">2026</p></div>
+    <div className="space-y-6 animate-in fade-in print-area">
+      <div className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm">
+        
+        <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-200">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">Apex Performance Concepts LLC</h2>
+            <p className="text-sm font-medium text-slate-500 mt-1">Schedule C (Form 1040) Tax Summary</p>
+          </div>
+          <div className="text-right flex flex-col items-end">
+            <button 
+              onClick={() => window.print()} 
+              className="no-print mb-3 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center transition-colors"
+            >
+              <Printer size={16} className="mr-2"/> Save PDF Report
+            </button>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tax Year</p>
+            <p className="text-xl font-bold text-indigo-600">2026</p>
+          </div>
         </div>
-        <div className="mb-8"><h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-2 bg-slate-100 p-2 rounded">Part I: Income</h3><TaxLine line="1" description="Gross receipts or sales" amount={grossSales} /><TaxLine line="7" description="Gross income" amount={grossSales} isTotal /></div>
+
+        <div className="mb-8">
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-2 bg-slate-100 p-2 rounded">Part I: Income</h3>
+          <TaxLine line="1" description="Gross receipts or sales" amount={grossSales} />
+          <TaxLine line="7" description="Gross income" amount={grossSales} isTotal />
+        </div>
+
         <div className="mb-8">
           <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-2 bg-slate-100 p-2 rounded">Part II: Expenses</h3>
-          <TaxLine line="8" description="Advertising" amount={expAdvertising} /><TaxLine line="9" description="Car/truck expenses" amount={mileageDeduction} />
-          <TaxLine line="10" description="Commissions and fees" amount={ebayAdFees} /><TaxLine line="18" description="Office expense" amount={expOffice} />
-          <TaxLine line="22" description="Supplies" amount={expSupplies} /><TaxLine line="24a" description="Travel" amount={expTravel} />
-          <TaxLine line="27a" description="Other: Shipping Labels" amount={shippingFees} /><TaxLine line="27a" description="Other: Equipment" amount={expEquipment} />
+          <TaxLine line="8" description="Advertising" amount={expAdvertising} />
+          <TaxLine line="9" description="Car/truck expenses" amount={mileageDeduction} />
+          <TaxLine line="10" description="Commissions and fees" amount={ebayAdFees} />
+          <TaxLine line="18" description="Office expense" amount={expOffice} />
+          <TaxLine line="22" description="Supplies" amount={expSupplies} />
+          <TaxLine line="24a" description="Travel" amount={expTravel} />
+          <TaxLine line="27a" description="Other: Shipping Labels" amount={shippingFees} />
+          <TaxLine line="27a" description="Other: Equipment" amount={expEquipment} />
           <div className="mt-2"><TaxLine line="28" description="Total expenses" amount={totalExpenses} isTotal /></div>
         </div>
+
         <div className="mb-8">
           <div className={`p-4 rounded-lg flex justify-between items-center border ${netProfit >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
             <div className="flex items-center"><span className="w-16 text-xs font-mono font-bold opacity-70">Line 31</span><span className="font-bold text-lg">Net profit (or loss)</span></div>
@@ -747,5 +953,13 @@ style.textContent = `
   .input-field { width: 100%; padding: 0.625rem 0.875rem; border-radius: 0.5rem; border: 1px solid #e2e8f0; background-color: #f8fafc; font-size: 0.875rem; transition: all 0.2s; outline: none; }
   .input-field:focus { border-color: #3b82f6; background-color: #ffffff; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
   .hide-scrollbar::-webkit-scrollbar { display: none; } .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  
+  @media print {
+    .no-print { display: none !important; }
+    body { background-color: white !important; -webkit-print-color-adjust: exact; }
+    .print-bg-white { background-color: white !important; }
+    .print-no-padding { padding: 0 !important; margin: 0 !important; }
+    @page { margin: 0.5in; }
+  }
 `;
 document.head.appendChild(style);
