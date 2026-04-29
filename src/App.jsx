@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
-  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X, ArrowUpDown, ChevronUp, ChevronDown, PieChart, BarChart3, Printer
+  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X, ArrowUpDown, ChevronUp, ChevronDown, PieChart, BarChart3, Printer, Zap, ArrowRightLeft, ShieldCheck, Target, Package, AlertTriangle, Image as ImageIcon, Map as MapIcon, Loader2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // --- FIREBASE SETUP ---
 const isPreviewEnv = typeof __firebase_config !== 'undefined';
@@ -21,6 +22,7 @@ const firebaseConfig = isPreviewEnv ? JSON.parse(__firebase_config) : {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 const getColRef = (colName) => isPreviewEnv ? collection(db, 'artifacts', appId, 'public', 'data', colName) : collection(db, colName);
@@ -69,24 +71,16 @@ const parseCSV = (text) => {
 // --- CUSTOM HOOK FOR SORTING ---
 const useSortableData = (items, defaultKey = 'date') => {
   const [sortConfig, setSortConfig] = useState({ key: defaultKey, direction: 'descending' });
-
   const sortedItems = useMemo(() => {
     let sortableItems = [...items];
     if (sortConfig !== null) {
       sortableItems.sort((a, b) => {
-        let aVal = a[sortConfig.key];
-        let bVal = b[sortConfig.key];
+        let aVal = a[sortConfig.key]; let bVal = b[sortConfig.key];
         if (aVal === undefined || aVal === null || aVal === '') aVal = '';
         if (bVal === undefined || bVal === null || bVal === '') bVal = '';
-
-        if (!isNaN(aVal) && !isNaN(bVal) && aVal !== '' && bVal !== '') {
-          aVal = Number(aVal); bVal = Number(bVal);
-        } else if (sortConfig.key === 'date') {
-          aVal = new Date(aVal).getTime() || 0; bVal = new Date(bVal).getTime() || 0;
-        } else {
-          aVal = String(aVal).toLowerCase(); bVal = String(bVal).toLowerCase();
-        }
-
+        if (!isNaN(aVal) && !isNaN(bVal) && aVal !== '' && bVal !== '') { aVal = Number(aVal); bVal = Number(bVal); } 
+        else if (sortConfig.key === 'date') { aVal = new Date(aVal).getTime() || 0; bVal = new Date(bVal).getTime() || 0; } 
+        else { aVal = String(aVal).toLowerCase(); bVal = String(bVal).toLowerCase(); }
         if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
         if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
         return 0;
@@ -94,13 +88,11 @@ const useSortableData = (items, defaultKey = 'date') => {
     }
     return sortableItems;
   }, [items, sortConfig]);
-
   const requestSort = (key) => {
     let direction = 'ascending';
     if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') { direction = 'descending'; }
     setSortConfig({ key, direction });
   };
-
   return { items: sortedItems, requestSort, sortConfig };
 };
 
@@ -121,12 +113,14 @@ const SortableHeader = ({ label, sortKey, currentSort, requestSort, alignRight, 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [user, setUser] = useState(null);
+  const [quickAction, setQuickAction] = useState(null);
 
   // --- STATE MANAGEMENT ---
   const [revenues, setRevenues] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [equities, setEquities] = useState([]);
   const [mileages, setMileages] = useState([]);
+  const [restocks, setRestocks] = useState([]);
   
   const [appSettings, setAppSettings] = useState({ initialInvestment: 1219.00 });
   const [cogs, setCogs] = useState({
@@ -156,21 +150,16 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     
-    const unsubRevs = onSnapshot(getColRef('revenues'), 
-      (snap) => setRevenues(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
-    const unsubExps = onSnapshot(getColRef('expenses'), 
-      (snap) => setExpenses(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
-    const unsubEqs = onSnapshot(getColRef('equities'), 
-      (snap) => setEquities(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
-    const unsubMiles = onSnapshot(getColRef('mileages'), 
-      (snap) => setMileages(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubRevs = onSnapshot(getColRef('revenues'), (snap) => setRevenues(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubExps = onSnapshot(getColRef('expenses'), (snap) => setExpenses(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubEqs = onSnapshot(getColRef('equities'), (snap) => setEquities(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubMiles = onSnapshot(getColRef('mileages'), (snap) => setMileages(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubRestocks = onSnapshot(getColRef('restocks'), (snap) => setRestocks(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
     
-    const unsubCogs = onSnapshot(getDocRef('settings', 'cogs'), 
-      (docSnap) => { if (docSnap.exists()) setCogs({ ...cogs, ...docSnap.data() }); }, console.error);
-    const unsubSettings = onSnapshot(getDocRef('settings', 'app'), 
-      (docSnap) => { if (docSnap.exists()) setAppSettings(docSnap.data()); }, console.error);
+    const unsubCogs = onSnapshot(getDocRef('settings', 'cogs'), (docSnap) => { if (docSnap.exists()) setCogs({ ...cogs, ...docSnap.data() }); }, console.error);
+    const unsubSettings = onSnapshot(getDocRef('settings', 'app'), (docSnap) => { if (docSnap.exists()) setAppSettings(docSnap.data()); }, console.error);
 
-    return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubCogs(); unsubSettings(); };
+    return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubRestocks(); unsubCogs(); unsubSettings(); };
   }, [user]);
 
   // --- MUTATION HANDLERS ---
@@ -182,7 +171,6 @@ export default function App() {
   const handleUpdateRecord = async (collectionName, id, updatedData) => {
     if (!user) return;
     const cleanData = { ...updatedData };
-    // Remove derived data so we don't save garbage to Firebase
     delete cleanData.id; delete cleanData.net; delete cleanData.trueProfit; 
     delete cleanData.margin; delete cleanData.deduction;
     await updateDoc(getDocRef(collectionName, id.toString()), cleanData);
@@ -205,61 +193,129 @@ export default function App() {
     await setDoc(getDocRef('settings', 'app'), newSettings);
   };
 
-  // --- CALCULATIONS ---
+  const uploadReceipt = async (file) => {
+    if (!file || !user) return null;
+    try {
+      const storageRef = ref(storage, `receipts/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      return await getDownloadURL(storageRef);
+    } catch (err) {
+      console.error("Storage upload failed.", err);
+      alert("Upload failed. Make sure Storage is enabled in Test Mode in Firebase.");
+      return null;
+    }
+  };
+
+  // --- CALCULATIONS & PREDICTIVE SUPPLY CHAIN ---
+  const petgCostPerGram = cogs.spoolCost / 1000;
+  const costPerTrainer = (petgCostPerGram * cogs.gramsUsed) + (cogs.concreteCost * cogs.lbsUsed) + Number(cogs.boxCost || 0) + Number(cogs.bubbleWrapCost || 0) + Number(cogs.screwsCost || 0) + Number(cogs.insertsCost || 0) + Number(cogs.washersCost || 0);
+
+  // Revenue & Profit Math
+  const totalUnitsSold = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.qty || 1), 0), [revenues]);
   const totalGrossRevenue = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.gross || 0), 0), [revenues]);
   const totalPlatformFees = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.ebay || 0) + Number(r.ad || 0) + Number(r.shipping || 0), 0), [revenues]);
-  const totalOperatingExpenses = useMemo(() => expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0), [expenses]);
   
+  const totalOperatingExpenses = useMemo(() => expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0), [expenses]);
+  const totalMiles = useMemo(() => mileages.reduce((sum, m) => sum + Number(m.miles || 0), 0), [mileages]);
+  const taxShield = totalOperatingExpenses + (totalMiles * 0.725);
   const netProfit = totalGrossRevenue - totalPlatformFees - totalOperatingExpenses;
   const taxReserve = netProfit > 0 ? netProfit * 0.25 : 0;
   
+  const totalTrueProfit = useMemo(() => {
+    return revenues.reduce((sum, r) => {
+      const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0);
+      return sum + (net - (costPerTrainer * Number(r.qty || 1)));
+    }, 0);
+  }, [revenues, costPerTrainer]);
+  const avgProfitPerUnit = totalUnitsSold > 0 ? totalTrueProfit / totalUnitsSold : 0;
+
+  // Draws & Bank Math
   const drawsRecoup = useMemo(() => equities.filter(e => e.category === 'Recoup Investment' || !e.category).reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
   const drawsGolf = useMemo(() => equities.filter(e => e.category === 'Golf Fund').reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
   const drawsOther = useMemo(() => equities.filter(e => e.category === 'Other Draw').reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
-  
-  // Calculate specific Amex Transfers
   const amexTransfers = useMemo(() => equities.filter(e => e.category === 'Amex Transfer (Op Cash)').reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
 
-  // Calculate expenses starting from Amex Account Opening (April 29, 2026)
   const AMEX_START_DATE = '2026-04-29';
-  const amexOperatingExpenses = useMemo(() => 
-    expenses.filter(e => e.date >= AMEX_START_DATE).reduce((sum, e) => sum + Number(e.amount || 0), 0)
-  , [expenses]);
+  const amexOperatingExpenses = useMemo(() => expenses.filter(e => e.date >= AMEX_START_DATE).reduce((sum, e) => sum + Number(e.amount || 0), 0), [expenses]);
+  const estimatedCashBalance = amexTransfers - amexOperatingExpenses;
 
   const initialGoal = Number(appSettings.initialInvestment || 0);
   const remainingToRecoup = Math.max(0, initialGoal - drawsRecoup);
-  
   const safeCash = netProfit - taxReserve;
   const isGolfUnlocked = safeCash >= initialGoal;
   const availableGolfFund = isGolfUnlocked ? Math.max(0, safeCash - initialGoal - drawsGolf - drawsOther) : 0;
 
-  // New Estimated Cash Balance simply tracks Transfers IN vs Amex Expenses OUT
-  const estimatedCashBalance = amexTransfers - amexOperatingExpenses;
+  // --- WAREHOUSE & PREDICTIVE ENGINE ---
+  const fourteenDaysAgoStr = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() - 14);
+    return d.toISOString().split('T')[0];
+  }, []);
+  
+  const recentSales = useMemo(() => revenues.filter(r => r.date >= fourteenDaysAgoStr), [revenues, fourteenDaysAgoStr]);
+  const recentUnitsSold = useMemo(() => recentSales.reduce((sum, r) => sum + Number(r.qty || 1), 0), [recentSales]);
+  const dailySalesVelocity = recentUnitsSold / 14;
 
-  const petgCostPerGram = cogs.spoolCost / 1000;
-  const costPerTrainer = (petgCostPerGram * cogs.gramsUsed) + 
-                         (cogs.concreteCost * cogs.lbsUsed) + 
-                         Number(cogs.boxCost || 0) + 
-                         Number(cogs.bubbleWrapCost || 0) + 
-                         Number(cogs.screwsCost || 0) + 
-                         Number(cogs.insertsCost || 0) + 
-                         Number(cogs.washersCost || 0);
+  const restockTotals = useMemo(() => {
+    return restocks.reduce((acc, r) => { acc[r.material] = (acc[r.material] || 0) + Number(r.qty || 0); return acc; }, {});
+  }, [restocks]);
+
+  const currentStock = useMemo(() => ({
+    petg: (restockTotals['PETG (grams)'] || 0) - (totalUnitsSold * (cogs.gramsUsed || 250)),
+    concrete: (restockTotals['Concrete (lbs)'] || 0) - (totalUnitsSold * (cogs.lbsUsed || 5)),
+    boxes: (restockTotals['Boxes (qty)'] || 0) - totalUnitsSold,
+    wrap: (restockTotals['Bubble Wrap (qty)'] || 0) - totalUnitsSold,
+    screws: (restockTotals['Screws (sets)'] || 0) - totalUnitsSold,
+    inserts: (restockTotals['Inserts (sets)'] || 0) - totalUnitsSold,
+    washers: (restockTotals['Washers (sets)'] || 0) - totalUnitsSold,
+  }), [restockTotals, totalUnitsSold, cogs]);
+
+  const buildableUnits = useMemo(() => Math.floor(Math.min(
+    cogs.gramsUsed > 0 ? Math.max(0, currentStock.petg / cogs.gramsUsed) : Infinity,
+    cogs.lbsUsed > 0 ? Math.max(0, currentStock.concrete / cogs.lbsUsed) : Infinity,
+    Math.max(0, currentStock.boxes), Math.max(0, currentStock.wrap), Math.max(0, currentStock.screws), Math.max(0, currentStock.inserts), Math.max(0, currentStock.washers)
+  )), [currentStock, cogs]);
+
+  // Predict exact runout days per material
+  const runoutDays = useMemo(() => ({
+    petg: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.petg / (cogs.gramsUsed || 1)) / dailySalesVelocity)) : Infinity,
+    concrete: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.concrete / (cogs.lbsUsed || 1)) / dailySalesVelocity)) : Infinity,
+    boxes: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.boxes / dailySalesVelocity)) : Infinity,
+    wrap: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.wrap / dailySalesVelocity)) : Infinity,
+    screws: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.screws / dailySalesVelocity)) : Infinity,
+    inserts: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.inserts / dailySalesVelocity)) : Infinity,
+    washers: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.washers / dailySalesVelocity)) : Infinity,
+  }), [dailySalesVelocity, currentStock, cogs]);
+
+  // Aggregate alerts for the Dashboard banner
+  const lowStockAlerts = useMemo(() => {
+    if (dailySalesVelocity === 0) return [];
+    const alerts = [];
+    if (runoutDays.petg <= 7) alerts.push({ name: 'PETG', days: runoutDays.petg });
+    if (runoutDays.concrete <= 7) alerts.push({ name: 'Concrete', days: runoutDays.concrete });
+    if (runoutDays.boxes <= 7) alerts.push({ name: 'Boxes', days: runoutDays.boxes });
+    if (runoutDays.wrap <= 7) alerts.push({ name: 'Bubble Wrap', days: runoutDays.wrap });
+    if (runoutDays.screws <= 7) alerts.push({ name: 'Screws', days: runoutDays.screws });
+    if (runoutDays.inserts <= 7) alerts.push({ name: 'Inserts', days: runoutDays.inserts });
+    if (runoutDays.washers <= 7) alerts.push({ name: 'Washers', days: runoutDays.washers });
+    return alerts;
+  }, [runoutDays, dailySalesVelocity]);
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   
   const TabButton = ({ id, icon: Icon, label }) => (
-    <button
-      onClick={() => setActiveTab(id)}
-      className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors w-full sm:w-auto ${
-        activeTab === id ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-      }`}
-    >
+    <button onClick={() => setActiveTab(id)} className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors w-full sm:w-auto ${activeTab === id ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}>
       <Icon size={18} /><span>{label}</span>
     </button>
   );
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans print-bg-white">
+      
+      {/* QUICK ACTION MODALS */}
+      {quickAction === 'revenue' && <QuickRevenueModal onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('revenues', d); setQuickAction(null); }} />}
+      {quickAction === 'expense' && <QuickExpenseModal uploadReceipt={uploadReceipt} onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('expenses', d); setQuickAction(null); }} />}
+      {quickAction === 'equity' && <QuickEquityModal onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('equities', d); setQuickAction(null); }} />}
+
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm no-print">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="py-4 flex justify-between items-center">
@@ -270,12 +326,13 @@ export default function App() {
           </div>
           <div className="flex overflow-x-auto hide-scrollbar border-t border-slate-100">
             <TabButton id="dashboard" icon={LayoutDashboard} label="Dashboard" />
-            <TabButton id="analytics" icon={PieChart} label="Analytics" />
+            <TabButton id="analytics" icon={MapIcon} label="Analytics & Maps" />
             <TabButton id="revenue" icon={DollarSign} label="Revenue Log" />
-            <TabButton id="expenses" icon={Receipt} label="Expense Tracker" />
-            <TabButton id="equity" icon={Wallet} label="Payouts & Transfers" />
+            <TabButton id="warehouse" icon={Package} label="Warehouse" />
+            <TabButton id="expenses" icon={Receipt} label="Expense Vault" />
+            <TabButton id="equity" icon={Wallet} label="Payouts" />
             <TabButton id="mileage" icon={Car} label="Mileage Log" />
-            <TabButton id="cogs" icon={Settings} label="Manufacturing" />
+            <TabButton id="cogs" icon={Settings} label="Mfg. Settings" />
             <TabButton id="tax" icon={ClipboardList} label="Tax Summary" />
           </div>
         </div>
@@ -284,7 +341,32 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print-no-padding">
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <h2 className="text-xl font-semibold mb-4 text-slate-800">Command Center</h2>
+            
+            {/* SUPPLY CHAIN ALERT BANNER */}
+            {lowStockAlerts.length > 0 && (
+              <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-2 rounded-r-xl shadow-sm flex items-start animate-in slide-in-from-top-2">
+                <AlertTriangle className="text-amber-500 mr-3 mt-0.5 flex-shrink-0" size={20} />
+                <div>
+                  <h3 className="text-amber-800 font-bold text-sm">Supply Chain Alert</h3>
+                  <p className="text-amber-700 text-sm mt-1">Based on your recent sales velocity ({dailySalesVelocity.toFixed(1)} units/day), you will run out of:</p>
+                  <ul className="text-amber-700 text-sm mt-1 list-disc list-inside font-medium">
+                    {lowStockAlerts.map((alert, i) => (
+                      <li key={i}>{alert.name} <span className="font-normal opacity-80">(in {alert.days} days)</span></li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+              <h2 className="text-xl font-semibold text-slate-800">Command Center</h2>
+              <div className="flex space-x-3">
+                <button onClick={() => setQuickAction('revenue')} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors shadow-sm"><Plus size={16} className="mr-1.5"/> Log Sale</button>
+                <button onClick={() => setQuickAction('expense')} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors shadow-sm"><Receipt size={16} className="mr-1.5"/> Expense</button>
+                <button onClick={() => setQuickAction('equity')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors shadow-sm"><ArrowRightLeft size={16} className="mr-1.5"/> Transfer</button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <DashboardCard title="Total Revenue (Gross)" amount={totalGrossRevenue} subtitle="Total sales before fees" color="blue" />
               <DashboardCard title="Total Platform Fees" amount={totalPlatformFees} subtitle="eBay, Ads, & Shipping" color="red" isNegative />
@@ -293,39 +375,53 @@ export default function App() {
               <DashboardCard title="Net Profit" amount={netProfit} subtitle="The actual 'Apex' earnings" color={netProfit >= 0 ? "emerald" : "red"} highlight />
               <DashboardCard title="Tax Reserve (25%)" amount={taxReserve} subtitle="Set aside for IRS & Iowa" color="indigo" />
               <DashboardCard title="Amex Checking Balance" amount={estimatedCashBalance} subtitle="Transfers in minus expenses out (since Apr 29)" color="blue" highlight />
-              <div className="col-span-1 md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                <ProgressCard drawsRecoup={drawsRecoup} initialGoal={initialGoal} remainingToRecoup={remainingToRecoup} formatCurrency={formatCurrency} onUpdateGoal={(newGoal) => handleUpdateSettings({ ...appSettings, initialInvestment: newGoal })} />
-                
-                <div className={`rounded-xl border p-6 shadow-sm flex flex-col items-center justify-center text-center transition-colors ${drawsGolf > 0 || isGolfUnlocked ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-                  <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">My Golf Fund</h3>
-                  
-                  <div className={`text-4xl font-extrabold ${drawsGolf > 0 || isGolfUnlocked ? 'text-emerald-600' : 'text-slate-400'}`}>
-                    {formatCurrency(drawsGolf)}
-                    <span className="block text-xs text-slate-500 font-normal mt-1 tracking-normal normal-case">Total Accounted For / Withdrawn</span>
-                  </div>
-
-                  <div className="w-full mt-4 border-t border-slate-200/50 pt-3">
-                  {!isGolfUnlocked ? (
-                    <p className="text-sm text-slate-500">
-                      Generate <span className="font-medium text-slate-600">{formatCurrency(Math.max(0, initialGoal - safeCash))}</span> more safe profit to unlock
-                    </p>
-                  ) : (
-                    <div className="flex justify-between items-center w-full text-sm">
-                      <span className="text-slate-600">Available to Withdraw:</span>
-                      <span className="font-medium text-emerald-700">{formatCurrency(availableGolfFund)}</span>
-                    </div>
-                  )}
-                  </div>
+              
+              <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col justify-center">
+                <h3 className="text-sm font-medium text-slate-500 flex items-center"><Target size={16} className="mr-1.5"/> Mfg. Efficiency</h3>
+                <div className="text-3xl font-bold mt-2 text-emerald-600">{formatCurrency(avgProfitPerUnit)}</div>
+                <p className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-wider">Avg True Profit Per Unit</p>
+                <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between text-sm">
+                  <span className="text-slate-500">Total Units Sold:</span>
+                  <span className="font-bold text-slate-700">{totalUnitsSold}</span>
                 </div>
-
               </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col justify-center">
+                <h3 className="text-sm font-medium text-slate-500 flex items-center"><ShieldCheck size={16} className="mr-1.5"/> The Tax Shield</h3>
+                <div className="text-3xl font-bold mt-2 text-blue-600">{formatCurrency(taxShield)}</div>
+                <p className="text-xs text-slate-400 mt-2 leading-tight">Total cash value of legal deductions (Expenses + Mileage)</p>
+              </div>
+
+              <div className={`rounded-xl border p-6 shadow-sm flex flex-col items-center justify-center text-center transition-colors ${drawsGolf > 0 || isGolfUnlocked ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">My Golf Fund</h3>
+                <div className={`text-4xl font-extrabold ${drawsGolf > 0 || isGolfUnlocked ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {formatCurrency(drawsGolf)}
+                  <span className="block text-xs text-slate-500 font-normal mt-1 tracking-normal normal-case">Total Accounted For / Withdrawn</span>
+                </div>
+                <div className="w-full mt-4 border-t border-slate-200/50 pt-3">
+                {!isGolfUnlocked ? (
+                  <p className="text-sm text-slate-500">Generate <span className="font-medium text-slate-600">{formatCurrency(Math.max(0, initialGoal - safeCash))}</span> more safe profit to unlock</p>
+                ) : (
+                  <div className="flex justify-between items-center w-full text-sm">
+                    <span className="text-slate-600">Available to Withdraw:</span>
+                    <span className="font-medium text-emerald-700">{formatCurrency(availableGolfFund)}</span>
+                  </div>
+                )}
+                </div>
+              </div>
+
+              <div className="col-span-1 md:col-span-2 lg:col-span-3">
+                <ProgressCard drawsRecoup={drawsRecoup} initialGoal={initialGoal} remainingToRecoup={remainingToRecoup} formatCurrency={formatCurrency} onUpdateGoal={(newGoal) => handleUpdateSettings({ ...appSettings, initialInvestment: newGoal })} />
+              </div>
+
             </div>
           </div>
         )}
 
         {activeTab === 'analytics' && <Analytics revenues={revenues} expenses={expenses} formatCurrency={formatCurrency} />}
+        {activeTab === 'warehouse' && <Warehouse restocks={restocks} currentStock={currentStock} buildableUnits={buildableUnits} runoutDays={runoutDays} dailySalesVelocity={dailySalesVelocity} onAdd={(data) => handleAdd('restocks', data)} onDelete={(id) => handleDelete('restocks', id)} />}
         {activeTab === 'revenue' && <RevenueLog revenues={revenues} costPerTrainer={costPerTrainer} onAdd={(data) => handleAdd('revenues', data)} onUpdate={(id, data) => handleUpdateRecord('revenues', id, data)} onDelete={(id) => handleDelete('revenues', id)} formatCurrency={formatCurrency} />}
-        {activeTab === 'expenses' && <ExpenseTracker expenses={expenses} onAdd={(data) => handleAdd('expenses', data)} onUpdate={(id, data) => handleUpdateRecord('expenses', id, data)} onDelete={(id) => handleDelete('expenses', id)} formatCurrency={formatCurrency} />}
+        {activeTab === 'expenses' && <ExpenseTracker uploadReceipt={uploadReceipt} expenses={expenses} onAdd={(data) => handleAdd('expenses', data)} onUpdate={(id, data) => handleUpdateRecord('expenses', id, data)} onDelete={(id) => handleDelete('expenses', id)} formatCurrency={formatCurrency} />}
         {activeTab === 'equity' && <OwnerEquity equities={equities} initialGoal={initialGoal} onAdd={(data) => handleAdd('equities', data)} onUpdate={(id, data) => handleUpdateRecord('equities', id, data)} onDelete={(id) => handleDelete('equities', id)} formatCurrency={formatCurrency} />}
         {activeTab === 'mileage' && <MileageLog mileages={mileages} onAdd={(data) => handleAdd('mileages', data)} onUpdate={(id, data) => handleUpdateRecord('mileages', id, data)} onDelete={(id) => handleDelete('mileages', id)} formatCurrency={formatCurrency} />}
         {activeTab === 'cogs' && <Manufacturing cogs={cogs} onUpdate={handleUpdateCogs} costPerTrainer={costPerTrainer} petgCostPerGram={petgCostPerGram} formatCurrency={formatCurrency} />}
@@ -335,8 +431,16 @@ export default function App() {
   );
 }
 
-// --- SUB-COMPONENTS ---
-const inlineInputStyle = "w-full border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500 bg-white";
+// --- US TILE MAP DATA ---
+const tileMapData = [
+  { code: 'AK', c: 0, r: 0 }, { code: 'ME', c: 11, r: 0 },
+  { code: 'WA', c: 1, r: 1 }, { code: 'ID', c: 2, r: 1 }, { code: 'MT', c: 3, r: 1 }, { code: 'ND', c: 4, r: 1 }, { code: 'MN', c: 5, r: 1 }, { code: 'WI', c: 6, r: 1 }, { code: 'MI', c: 7, r: 1 }, { code: 'NY', c: 9, r: 1 }, { code: 'VT', c: 10, r: 1 }, { code: 'NH', c: 11, r: 1 },
+  { code: 'OR', c: 1, r: 2 }, { code: 'NV', c: 2, r: 2 }, { code: 'WY', c: 3, r: 2 }, { code: 'SD', c: 4, r: 2 }, { code: 'IA', c: 5, r: 2 }, { code: 'IL', c: 6, r: 2 }, { code: 'IN', c: 7, r: 2 }, { code: 'OH', c: 8, r: 2 }, { code: 'PA', c: 9, r: 2 }, { code: 'NJ', c: 10, r: 2 }, { code: 'MA', c: 11, r: 2 },
+  { code: 'CA', c: 1, r: 3 }, { code: 'UT', c: 2, r: 3 }, { code: 'CO', c: 3, r: 3 }, { code: 'NE', c: 4, r: 3 }, { code: 'MO', c: 5, r: 3 }, { code: 'KY', c: 6, r: 3 }, { code: 'WV', c: 7, r: 3 }, { code: 'VA', c: 8, r: 3 }, { code: 'MD', c: 9, r: 3 }, { code: 'CT', c: 10, r: 3 }, { code: 'RI', c: 11, r: 3 },
+  { code: 'AZ', c: 2, r: 4 }, { code: 'NM', c: 3, r: 4 }, { code: 'KS', c: 4, r: 4 }, { code: 'AR', c: 5, r: 4 }, { code: 'TN', c: 6, r: 4 }, { code: 'NC', c: 7, r: 4 }, { code: 'SC', c: 8, r: 4 }, { code: 'DE', c: 9, r: 4 }, { code: 'DC', c: 10, r: 4 },
+  { code: 'OK', c: 4, r: 5 }, { code: 'LA', c: 5, r: 5 }, { code: 'MS', c: 6, r: 5 }, { code: 'AL', c: 7, r: 5 }, { code: 'GA', c: 8, r: 5 },
+  { code: 'HI', c: 0, r: 6 }, { code: 'TX', c: 4, r: 6 }, { code: 'FL', c: 8, r: 6 }
+];
 
 function Analytics({ revenues, expenses, formatCurrency }) {
   const monthlyData = useMemo(() => {
@@ -374,9 +478,95 @@ function Analytics({ revenues, expenses, formatCurrency }) {
     }).sort((a, b) => b.amount - a.amount);
   }, [expenses]);
 
+  const { stateData, maxStateRevenue } = useMemo(() => {
+    const stateRevenues = {};
+    let maxRev = 0;
+    revenues.forEach(r => {
+      if (r.state && r.state.length === 2) {
+        const gross = Number(r.gross || 0);
+        stateRevenues[r.state] = (stateRevenues[r.state] || 0) + gross;
+        if (stateRevenues[r.state] > maxRev) maxRev = stateRevenues[r.state];
+      }
+    });
+    return { stateData: stateRevenues, maxStateRevenue: maxRev };
+  }, [revenues]);
+
+  // Sort states by revenue for the leaderboard
+  const topStates = useMemo(() => {
+    return Object.keys(stateData)
+      .map(code => ({ code, rev: stateData[code] }))
+      .sort((a, b) => b.rev - a.rev)
+      .slice(0, 5);
+  }, [stateData]);
+
+  // Generate the 7x12 layout grid
+  const grid = useMemo(() => {
+    const arr = Array(7).fill(null).map(() => Array(12).fill(null));
+    tileMapData.forEach(t => arr[t.r][t.c] = t.code);
+    return arr;
+  }, []);
+
   return (
     <div className="space-y-6 animate-in fade-in">
-      <h2 className="text-xl font-semibold mb-4 text-slate-800">Analytics Dashboard</h2>
+      
+      {/* ENTERPRISE TILE MAP & LEADERBOARD */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="font-semibold text-slate-700 flex items-center"><MapIcon size={18} className="mr-2 text-slate-400"/> Customer Geospatial Tile Map</h3>
+          <div className="text-xs font-medium text-slate-400 bg-slate-100 px-3 py-1 rounded-full">Hover tiles to view volume</div>
+        </div>
+        
+        <div className="flex flex-col lg:flex-row gap-8">
+          
+          <div className="flex-1 bg-slate-50 rounded-xl p-4 border border-slate-100 flex items-center justify-center">
+            <div className="grid gap-1 sm:gap-1.5 w-full max-w-2xl" style={{ gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' }}>
+              {grid.flat().map((cell, i) => {
+                if (!cell) return <div key={i} className="aspect-square" />;
+                
+                const rev = stateData[cell] || 0;
+                const intensity = maxStateRevenue > 0 ? rev / maxStateRevenue : 0;
+                const bgColor = rev > 0 ? `rgba(37, 99, 235, ${Math.max(0.15, intensity)})` : '#ffffff';
+                const textColor = intensity > 0.4 ? '#ffffff' : '#475569';
+                const borderColor = rev > 0 ? 'border-transparent' : 'border-slate-200';
+                
+                return (
+                  <div 
+                    key={i}
+                    className={`aspect-square border ${borderColor} rounded md:rounded-md flex items-center justify-center text-[10px] sm:text-xs font-bold cursor-pointer hover:ring-2 hover:ring-blue-400 hover:scale-110 hover:z-10 transition-all shadow-sm relative group`}
+                    style={{ backgroundColor: bgColor, color: textColor }}
+                  >
+                    {cell}
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-slate-900 text-white p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none">
+                      <div className="font-bold text-xs">{cell}</div>
+                      <div className="text-emerald-400 font-bold">{formatCurrency(rev)}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Top 5 Leaderboard */}
+          <div className="w-full lg:w-64 flex flex-col space-y-4">
+            <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200 pb-2">Top Markets</h4>
+            {topStates.length === 0 ? (
+              <div className="text-sm text-slate-400">No states logged yet. Use Quick Action to log a sale!</div>
+            ) : (
+              topStates.map((state, idx) => (
+                <div key={state.code} className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-slate-400 font-bold text-sm">#{idx + 1}</span>
+                    <span className="font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-sm">{state.code}</span>
+                  </div>
+                  <span className="font-bold text-emerald-600 text-sm">{formatCurrency(state.rev)}</span>
+                </div>
+              ))
+            )}
+          </div>
+
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-6">
@@ -440,6 +630,88 @@ function Analytics({ revenues, expenses, formatCurrency }) {
   );
 }
 
+function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySalesVelocity, onAdd, onDelete }) {
+  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], material: 'PETG (grams)', qty: '' });
+  const materials = ['PETG (grams)', 'Concrete (lbs)', 'Boxes (qty)', 'Bubble Wrap (qty)', 'Screws (sets)', 'Inserts (sets)', 'Washers (sets)'];
+  const { items: sortedRestocks, requestSort, sortConfig } = useSortableData(restocks);
+
+  const addRow = (e) => { e.preventDefault(); if (!formData.qty) return; onAdd(formData); setFormData({ ...formData, qty: '' }); };
+
+  const StockCard = ({ title, amount, unit, isWarning, daysRemaining, velocity }) => (
+    <div className={`rounded-xl border p-4 shadow-sm flex flex-col justify-center transition-colors ${isWarning ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+        {title} {isWarning && <AlertTriangle size={14} className="text-red-500" />}
+      </h3>
+      <div className={`text-2xl font-bold mt-2 ${isWarning ? 'text-red-600' : 'text-slate-800'}`}>{Number(amount).toLocaleString()} <span className="text-sm font-normal text-slate-500">{unit}</span></div>
+      {velocity > 0 && (
+        <div className={`text-xs mt-1.5 font-medium ${daysRemaining <= 7 ? 'text-red-500' : 'text-slate-400'}`}>
+          {daysRemaining > 0 && daysRemaining !== Infinity ? `Runs out in ~${daysRemaining} days` : (daysRemaining === 0 ? 'Out of stock' : 'Adequate supply')}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      <div className={`bg-slate-800 rounded-xl border border-slate-700 p-8 shadow-md text-white flex flex-col sm:flex-row sm:items-center justify-between relative overflow-hidden ${buildableUnits < 10 ? 'bg-red-900 border-red-700' : ''}`}>
+        <div className="absolute top-0 right-0 p-8 opacity-10"><Package size={160} /></div>
+        <div className="z-10">
+          <h2 className="text-lg font-medium text-slate-300">Current Production Capacity</h2>
+          <p className="text-sm text-slate-400 mt-1">Based on lowest raw material in stock</p>
+        </div>
+        <div className="z-10 mt-4 sm:mt-0 text-left sm:text-right">
+          <div className="text-6xl font-extrabold">{buildableUnits}</div>
+          <div className="text-sm font-bold uppercase tracking-widest text-emerald-400 mt-1">Trainers Buildable</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <StockCard title="PETG" amount={currentStock.petg} unit="grams" isWarning={runoutDays.petg <= 7} daysRemaining={runoutDays.petg} velocity={dailySalesVelocity} />
+        <StockCard title="Concrete" amount={currentStock.concrete} unit="lbs" isWarning={runoutDays.concrete <= 7} daysRemaining={runoutDays.concrete} velocity={dailySalesVelocity} />
+        <StockCard title="Boxes" amount={currentStock.boxes} unit="qty" isWarning={runoutDays.boxes <= 7} daysRemaining={runoutDays.boxes} velocity={dailySalesVelocity} />
+        <StockCard title="Bubble Wrap" amount={currentStock.wrap} unit="qty" isWarning={runoutDays.wrap <= 7} daysRemaining={runoutDays.wrap} velocity={dailySalesVelocity} />
+        <StockCard title="Screws" amount={currentStock.screws} unit="sets" isWarning={runoutDays.screws <= 7} daysRemaining={runoutDays.screws} velocity={dailySalesVelocity} />
+        <StockCard title="Inserts" amount={currentStock.inserts} unit="sets" isWarning={runoutDays.inserts <= 7} daysRemaining={runoutDays.inserts} velocity={dailySalesVelocity} />
+        <StockCard title="Washers" amount={currentStock.washers} unit="sets" isWarning={runoutDays.washers <= 7} daysRemaining={runoutDays.washers} velocity={dailySalesVelocity} />
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+        <h2 className="text-lg font-semibold mb-4 text-slate-800">Log Material Restock</h2>
+        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <input type="date" className="input-field" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+          <select className="input-field sm:col-span-2" value={formData.material} onChange={e => setFormData({...formData, material: e.target.value})}>{materials.map(m => <option key={m} value={m}>{m}</option>)}</select>
+          <input type="number" placeholder="Quantity Added" className="input-field" value={formData.qty} onChange={e => setFormData({...formData, qty: e.target.value})} required />
+          <button type="submit" className="sm:col-span-4 bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Add to Warehouse</button>
+        </form>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center"><h3 className="font-semibold text-slate-700">Restock History</h3></div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead className="bg-white border-b border-slate-200 text-slate-500">
+              <tr>
+                <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Material" sortKey="material" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Quantity Added" sortKey="qty" currentSort={sortConfig} requestSort={requestSort} alignRight />
+                <th className="p-4"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {sortedRestocks.length === 0 ? <tr><td colSpan="4" className="p-4 text-center text-slate-400">No restocks logged yet. Try adding your starting inventory above!</td></tr> : sortedRestocks.map(r => (
+                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-4">{r.date}</td><td className="p-4 font-medium text-slate-700">{r.material}</td><td className="p-4 text-right text-emerald-600 font-bold">+{Number(r.qty).toLocaleString()}</td>
+                    <td className="p-4 text-right"><button onClick={() => onDelete(r.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
+                  </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProgressCard({ drawsRecoup, initialGoal, remainingToRecoup, formatCurrency, onUpdateGoal }) {
   const [isEditing, setIsEditing] = useState(false);
   const [tempGoal, setTempGoal] = useState(initialGoal);
@@ -477,7 +749,7 @@ function DashboardCard({ title, amount, subtitle, color, isNegative, highlight }
 }
 
 function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, formatCurrency }) {
-  const [formData, setFormData] = useState({ date: '', orderNum: '', desc: '', gross: '', ebay: '', ad: '', shipping: '' });
+  const [formData, setFormData] = useState({ date: '', orderNum: '', desc: '', qty: 1, gross: '', ebay: '', ad: '', shipping: '', state: '' });
   const [importPreview, setImportPreview] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -485,21 +757,22 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
 
   const enrichedRevenues = useMemo(() => revenues.map(r => {
     const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0);
-    const trueProfit = net - costPerTrainer;
+    const qty = Number(r.qty || 1);
+    const trueProfit = net - (costPerTrainer * qty);
     const margin = Number(r.gross) > 0 ? (trueProfit / Number(r.gross)) * 100 : 0;
-    return { ...r, net, trueProfit, margin };
+    return { ...r, qty, net, trueProfit, margin };
   }), [revenues, costPerTrainer]);
 
   const { items: sortedRevenues, requestSort, sortConfig } = useSortableData(enrichedRevenues);
 
-  const addRow = (e) => { e.preventDefault(); if (!formData.gross) return; onAdd(formData); setFormData({ date: '', orderNum: '', desc: '', gross: '', ebay: '', ad: '', shipping: '' }); };
+  const addRow = (e) => { e.preventDefault(); if (!formData.gross) return; onAdd(formData); setFormData({ date: '', orderNum: '', desc: '', qty: 1, gross: '', ebay: '', ad: '', shipping: '', state: '' }); };
   
   const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item }); };
   const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
 
   const handleExport = () => {
-    const headers = ['Date', 'Order #', 'Description', 'Gross', 'eBay Fee', 'Ad Fee', 'Shipping', 'Net Payout', 'True Profit', 'Margin %'];
-    const data = sortedRevenues.map(r => [r.date, r.orderNum, r.desc, r.gross, r.ebay || 0, r.ad || 0, r.shipping || 0, r.net, r.trueProfit, r.margin.toFixed(1)]);
+    const headers = ['Date', 'Order #', 'State', 'Description', 'Qty', 'Gross', 'eBay Fee', 'Ad Fee', 'Shipping', 'Net Payout', 'True Profit', 'Margin %'];
+    const data = sortedRevenues.map(r => [r.date, r.orderNum, r.state, r.desc, r.qty, r.gross, r.ebay || 0, r.ad || 0, r.shipping || 0, r.net, r.trueProfit, r.margin.toFixed(1)]);
     exportToCsv('Apex_Revenues.csv', [headers, ...data]);
   };
 
@@ -517,7 +790,9 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       const headers = parsed[headerIdx];
       const dateIdx = headers.indexOf('Sale Date'); const orderIdx = headers.indexOf('Order Number');
       const titleIdx = headers.indexOf('Item Title'); const soldForIdx = headers.indexOf('Sold For');
-      const shipHandIdx = headers.indexOf('Shipping And Handling');
+      const shipHandIdx = headers.indexOf('Shipping And Handling'); const qtyIdx = headers.indexOf('Quantity');
+      const stateIdx = headers.indexOf('Ship To State');
+      
       const newRows = [];
       const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
       
@@ -530,7 +805,10 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         if (dateParts.length === 3) formattedDate = `20${dateParts[2]}-${months[dateParts[0]] || '01'}-${dateParts[1].padStart(2, '0')}`;
         const cleanNum = (str) => Number((str || '').replace(/[^0-9.-]+/g,""));
         const gross = cleanNum(row[soldForIdx]) + cleanNum(row[shipHandIdx]);
-        newRows.push({ id: Date.now() + i, date: formattedDate, orderNum: row[orderIdx], desc: row[titleIdx], gross: gross.toFixed(2), ebay: '', ad: '', shipping: '' });
+        const qty = qtyIdx > -1 ? (cleanNum(row[qtyIdx]) || 1) : 1;
+        const state = stateIdx > -1 ? (row[stateIdx] || '').toUpperCase().trim() : '';
+
+        newRows.push({ id: Date.now() + i, date: formattedDate, orderNum: row[orderIdx], desc: row[titleIdx], state, qty, gross: gross.toFixed(2), ebay: '', ad: '', shipping: '' });
       }
       setImportPreview(newRows);
     };
@@ -538,7 +816,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
     e.target.value = '';
   };
 
-  const confirmImport = () => { importPreview.forEach(r => { onAdd({ date: r.date, orderNum: r.orderNum, desc: r.desc, gross: r.gross, ebay: r.ebay, ad: r.ad, shipping: r.shipping }); }); setImportPreview(null); };
+  const confirmImport = () => { importPreview.forEach(r => { onAdd({ date: r.date, orderNum: r.orderNum, state: r.state, desc: r.desc, qty: r.qty, gross: r.gross, ebay: r.ebay, ad: r.ad, shipping: r.shipping }); }); setImportPreview(null); };
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -552,12 +830,12 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
             <div className="overflow-y-auto p-6 bg-slate-100 flex-1">
               <table className="w-full text-left text-sm whitespace-nowrap bg-white rounded shadow-sm">
                 <thead className="bg-slate-800 text-slate-100 sticky top-0 z-10">
-                  <tr><th className="p-3">Date</th><th className="p-3">Order #</th><th className="p-3 w-1/3">Item</th><th className="p-3 text-right">Gross Sale</th><th className="p-3">eBay Fee $</th><th className="p-3">Ad Fee $</th><th className="p-3">Shipping Label $</th></tr>
+                  <tr><th className="p-3">Date</th><th className="p-3">Order #</th><th className="p-3 w-1/4">Item</th><th className="p-3 text-center">Qty</th><th className="p-3 text-right">Gross Sale</th><th className="p-3">eBay Fee $</th><th className="p-3">Ad Fee $</th><th className="p-3">Shipping Label $</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {importPreview.map(r => (
                     <tr key={r.id} className="hover:bg-slate-50">
-                      <td className="p-3">{r.date}</td><td className="p-3 font-mono text-xs text-slate-500">{r.orderNum}</td><td className="p-3 truncate max-w-xs" title={r.desc}>{r.desc}</td><td className="p-3 text-right font-medium">{formatCurrency(r.gross)}</td>
+                      <td className="p-3">{r.date}</td><td className="p-3 font-mono text-xs text-slate-500">{r.orderNum}</td><td className="p-3 truncate max-w-xs" title={r.desc}>{r.desc}</td><td className="p-3 text-center font-bold text-slate-700">{r.qty}</td><td className="p-3 text-right font-medium">{formatCurrency(r.gross)}</td>
                       <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" value={r.ebay} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ebay: e.target.value } : pr))}/></td>
                       <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" value={r.ad} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ad: e.target.value } : pr))}/></td>
                       <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" value={r.shipping} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, shipping: e.target.value } : pr))}/></td>
@@ -576,19 +854,20 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
 
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-semibold mb-4 text-slate-800">Add Single Sale</h2>
-        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-7 gap-4">
+        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-8 gap-4">
           <input type="date" className="input-field col-span-1" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
           <input type="text" placeholder="Order #" className="input-field col-span-1" value={formData.orderNum} onChange={e => setFormData({...formData, orderNum: e.target.value})} />
+          <input type="text" maxLength="2" placeholder="State (AZ)" className="input-field col-span-1" value={formData.state} onChange={e => setFormData({...formData, state: e.target.value.toUpperCase()})} />
           <input type="text" placeholder="Description" className="input-field col-span-1 sm:col-span-1" value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
           <input type="number" step="0.01" placeholder="Gross ($)" className="input-field" value={formData.gross} onChange={e => setFormData({...formData, gross: e.target.value})} required />
           <input type="number" step="0.01" placeholder="eBay Fee ($)" className="input-field" value={formData.ebay} onChange={e => setFormData({...formData, ebay: e.target.value})} />
           <input type="number" step="0.01" placeholder="Ad Fee ($)" className="input-field" value={formData.ad} onChange={e => setFormData({...formData, ad: e.target.value})} />
           <input type="number" step="0.01" placeholder="Shipping ($)" className="input-field" value={formData.shipping} onChange={e => setFormData({...formData, shipping: e.target.value})} />
-          <button type="submit" className="md:col-span-7 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Add Sale</button>
+          <button type="submit" className="md:col-span-8 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Add Sale</button>
         </form>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-6">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <h3 className="font-semibold text-slate-700">Sales History (COGS per unit: {formatCurrency(costPerTrainer)})</h3>
           <div className="flex space-x-4">
@@ -603,7 +882,9 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
               <tr>
                 <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Order #" sortKey="orderNum" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="State" sortKey="state" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Qty" sortKey="qty" currentSort={sortConfig} requestSort={requestSort} alignRight />
                 <SortableHeader label="Gross" sortKey="gross" currentSort={sortConfig} requestSort={requestSort} alignRight />
                 <SortableHeader label="Fees & Ship" sortKey="ebay" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-red-500" />
                 <SortableHeader label="Net Payout" sortKey="net" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-blue-600" />
@@ -613,13 +894,15 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sortedRevenues.length === 0 ? <tr><td colSpan="9" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedRevenues.map(r => {
+              {sortedRevenues.length === 0 ? <tr><td colSpan="11" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedRevenues.map(r => {
                 const totalFees = Number(r.ebay || 0) + Number(r.ad || 0) + Number(r.shipping || 0);
                 return editingId === r.id ? (
                   <tr key={r.id} className="bg-blue-50/50">
                     <td className="p-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
-                    <td className="p-2"><input type="text" className={inlineInputStyle} value={editForm.orderNum} onChange={ev => setEditForm({...editForm, orderNum: ev.target.value})} /></td>
+                    <td className="p-2"><input type="text" className={`${inlineInputStyle} w-20`} value={editForm.orderNum} onChange={ev => setEditForm({...editForm, orderNum: ev.target.value})} /></td>
+                    <td className="p-2"><input type="text" maxLength="2" className={`${inlineInputStyle} w-12`} value={editForm.state} onChange={ev => setEditForm({...editForm, state: ev.target.value.toUpperCase()})} /></td>
                     <td className="p-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
+                    <td className="p-2"><input type="number" min="1" className={`${inlineInputStyle} w-16 text-center`} value={editForm.qty} onChange={ev => setEditForm({...editForm, qty: ev.target.value})} /></td>
                     <td className="p-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.gross} onChange={ev => setEditForm({...editForm, gross: ev.target.value})} /></td>
                     <td className="p-2 flex space-x-1">
                       <input type="number" step="0.01" className={`${inlineInputStyle} w-16`} placeholder="eBay" title="eBay Fee" value={editForm.ebay} onChange={ev => setEditForm({...editForm, ebay: ev.target.value})} />
@@ -638,7 +921,9 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
                   <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">{r.date}</td>
                     <td className="p-4 text-slate-500 font-mono text-xs">{r.orderNum || '-'}</td>
+                    <td className="p-4 font-bold text-slate-600">{r.state || '-'}</td>
                     <td className="p-4 truncate max-w-[200px]" title={r.desc}>{r.desc}</td>
+                    <td className="p-4 text-center font-bold text-slate-700">{r.qty}</td>
                     <td className="p-4 text-right font-medium">{formatCurrency(r.gross)}</td>
                     <td className="p-4 text-right text-slate-500" title={`eBay: ${formatCurrency(r.ebay || 0)} | Ad: ${formatCurrency(r.ad || 0)} | Ship: ${formatCurrency(r.shipping || 0)}`}>{formatCurrency(totalFees)}</td>
                     <td className="p-4 text-right font-medium text-blue-600">{formatCurrency(r.net)}</td>
@@ -659,39 +944,55 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
   );
 }
 
-function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency }) {
+function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency, uploadReceipt }) {
   const [formData, setFormData] = useState({ date: '', desc: '', category: 'Supplies', amount: '' });
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [file, setFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   const categories = ['Supplies', 'Advertising', 'Travel', 'Equipment', 'Office'];
   const { items: sortedExpenses, requestSort, sortConfig } = useSortableData(expenses);
 
-  const addRow = (e) => { e.preventDefault(); if (!formData.amount) return; onAdd(formData); setFormData({ date: '', desc: '', category: 'Supplies', amount: '' }); };
+  const addRow = async (e) => { 
+    e.preventDefault(); 
+    if (!formData.amount) return; 
+    setIsUploading(true);
+    let receiptUrl = '';
+    if (file) { receiptUrl = await uploadReceipt(file) || ''; }
+    onAdd({ ...formData, receiptUrl }); 
+    setFormData({ date: '', desc: '', category: 'Supplies', amount: '' }); 
+    setFile(null);
+    setIsUploading(false);
+  };
+  
   const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item, category: item.category || 'Supplies' }); };
   const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
 
   const handleExport = () => {
-    const headers = ['Date', 'Description', 'Category', 'Amount'];
-    const data = sortedExpenses.map(e => [e.date, e.desc, e.category, e.amount]);
+    const headers = ['Date', 'Description', 'Category', 'Amount', 'Receipt Link'];
+    const data = sortedExpenses.map(e => [e.date, e.desc, e.category, e.amount, e.receiptUrl || '']);
     exportToCsv('Apex_Expenses.csv', [headers, ...data]);
   };
 
   return (
     <div className="space-y-6 animate-in fade-in">
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4 text-slate-800">Log Expense</h2>
-        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <input type="date" className="input-field" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-          <input type="text" placeholder="Description" className="input-field" value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
-          <select className="input-field" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
-          <input type="number" step="0.01" placeholder="Amount ($)" className="input-field" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
-          <button type="submit" className="sm:col-span-4 bg-orange-500 hover:bg-orange-600 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Add Expense</button>
+        <h2 className="text-lg font-semibold mb-4 text-slate-800">Log Expense to Vault</h2>
+        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+          <input type="date" className="input-field col-span-1" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+          <input type="text" placeholder="Description" className="input-field col-span-1" value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
+          <select className="input-field col-span-1" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
+          <input type="number" step="0.01" placeholder="Amount ($)" className="input-field col-span-1" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
+          <input type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files[0])} className="col-span-1 text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+          <button type="submit" disabled={isUploading} className="sm:col-span-5 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors">
+             {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading to Vault...</> : <><Plus size={18} className="mr-2" /> Add Expense & Save Receipt</>}
+          </button>
         </form>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h3 className="font-semibold text-slate-700">Expense History</h3>
+          <h3 className="font-semibold text-slate-700">Audit-Proof Expense History</h3>
           <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm"><Download size={16} className="mr-1.5" /> Export CSV</button>
         </div>
         <div className="overflow-x-auto">
@@ -702,11 +1003,12 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency })
                 <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Category" sortKey="category" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Amount" sortKey="amount" currentSort={sortConfig} requestSort={requestSort} alignRight />
+                <th className="p-4 font-medium text-center">Receipt</th>
                 <th className="p-4"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sortedExpenses.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedExpenses.map(e => (
+              {sortedExpenses.length === 0 ? <tr><td colSpan="6" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedExpenses.map(e => (
                 editingId === e.id ? (
                   <tr key={e.id} className="bg-blue-50/50">
                     <td className="p-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
@@ -717,6 +1019,7 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency })
                       </select>
                     </td>
                     <td className="p-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.amount} onChange={ev => setEditForm({...editForm, amount: ev.target.value})} /></td>
+                    <td className="p-2 text-center text-slate-400">-</td>
                     <td className="p-2 text-right space-x-3">
                       <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700"><Check size={18}/></button>
                       <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-600"><X size={18}/></button>
@@ -726,6 +1029,13 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency })
                   <tr key={e.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4">{e.date}</td><td className="p-4">{e.desc}</td><td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{e.category}</span></td>
                     <td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td>
+                    <td className="p-4 text-center">
+                      {e.receiptUrl ? (
+                        <a href={e.receiptUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors" title="View Receipt">
+                          <ImageIcon size={16} />
+                        </a>
+                      ) : <span className="text-slate-300">-</span>}
+                    </td>
                     <td className="p-4 text-right space-x-3">
                       <button onClick={() => startEdit(e)} className="text-slate-400 hover:text-blue-600"><Edit2 size={16}/></button>
                       <button onClick={() => onDelete(e.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
