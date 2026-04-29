@@ -224,6 +224,9 @@ export default function App() {
   const isGolfUnlocked = safeCash >= initialGoal;
   const availableGolfFund = isGolfUnlocked ? Math.max(0, safeCash - initialGoal - drawsGolf - drawsOther) : 0;
 
+  const totalNetPayouts = totalGrossRevenue - totalPlatformFees;
+  const estimatedCashBalance = totalNetPayouts - totalOperatingExpenses - (drawsRecoup + drawsGolf + drawsOther);
+
   const petgCostPerGram = cogs.spoolCost / 1000;
   const costPerTrainer = (petgCostPerGram * cogs.gramsUsed) + 
                          (cogs.concreteCost * cogs.lbsUsed) + 
@@ -280,17 +283,32 @@ export default function App() {
               <div className="col-span-1 md:col-span-2 lg:col-span-3 border-t border-slate-200 my-2"></div>
               <DashboardCard title="Net Profit" amount={netProfit} subtitle="The actual 'Apex' earnings" color={netProfit >= 0 ? "emerald" : "red"} highlight />
               <DashboardCard title="Tax Reserve (25%)" amount={taxReserve} subtitle="Set aside for IRS & Iowa" color="indigo" />
+              <DashboardCard title="Est. Checking Balance" amount={estimatedCashBalance} subtitle="All cash in minus cash out" color="blue" highlight />
               <div className="col-span-1 md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                 <ProgressCard drawsRecoup={drawsRecoup} initialGoal={initialGoal} remainingToRecoup={remainingToRecoup} formatCurrency={formatCurrency} onUpdateGoal={(newGoal) => handleUpdateSettings({ ...appSettings, initialInvestment: newGoal })} />
-                <div className={`rounded-xl border p-6 shadow-sm flex flex-col items-center justify-center text-center transition-colors ${availableGolfFund > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-                  <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">Available Golf Fund</h3>
-                  <div className={`text-4xl font-extrabold ${availableGolfFund > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                    {formatCurrency(availableGolfFund)}
+                
+                <div className={`rounded-xl border p-6 shadow-sm flex flex-col items-center justify-center text-center transition-colors ${drawsGolf > 0 || isGolfUnlocked ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                  <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">My Golf Fund</h3>
+                  
+                  <div className={`text-4xl font-extrabold ${drawsGolf > 0 || isGolfUnlocked ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    {formatCurrency(drawsGolf)}
+                    <span className="block text-xs text-slate-500 font-normal mt-1 tracking-normal normal-case">Total Accounted For / Withdrawn</span>
                   </div>
-                  <p className="text-sm text-slate-500 mt-2">
-                    {!isGolfUnlocked ? `Generate ${formatCurrency(Math.max(0, initialGoal - safeCash))} more safe profit to unlock` : "Ready for the course!"}
-                  </p>
+
+                  <div className="w-full mt-4 border-t border-slate-200/50 pt-3">
+                  {!isGolfUnlocked ? (
+                    <p className="text-sm text-slate-500">
+                      Generate <span className="font-medium text-slate-600">{formatCurrency(Math.max(0, initialGoal - safeCash))}</span> more safe profit to unlock
+                    </p>
+                  ) : (
+                    <div className="flex justify-between items-center w-full text-sm">
+                      <span className="text-slate-600">Available to Withdraw:</span>
+                      <span className="font-medium text-emerald-700">{formatCurrency(availableGolfFund)}</span>
+                    </div>
+                  )}
+                  </div>
                 </div>
+
               </div>
             </div>
           </div>
