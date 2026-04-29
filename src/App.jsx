@@ -10,12 +10,13 @@ import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'fi
 // Smart config: Uses preview environment if here, or your keys if on Vercel
 const isPreviewEnv = typeof __firebase_config !== 'undefined';
 const firebaseConfig = isPreviewEnv ? JSON.parse(__firebase_config) : {
-  apiKey: "AIzaSyAXtaglk0mUuQyknLmyGuT6yoB8a0KYH7g",
-  authDomain: "apex-performance-ledger.firebaseapp.com",
-  projectId: "apex-performance-ledger",
-  storageBucket: "apex-performance-ledger.firebasestorage.app",
-  messagingSenderId: "833698468013",
-  appId: "1:833698468013:web:a2665043c9a345afd0f624"
+  apiKey: "PASTE_YOUR_API_KEY_HERE",
+  authDomain: "PASTE_YOUR_AUTH_DOMAIN_HERE",
+  projectId: "PASTE_YOUR_PROJECT_ID_HERE",
+  storageBucket: "PASTE_YOUR_STORAGE_BUCKET_HERE",
+  messagingSenderId: "PASTE_YOUR_MESSAGING_SENDER_ID_HERE",
+  appId: "PASTE_YOUR_APP_ID_HERE",
+  measurementId: "PASTE_YOUR_MEASUREMENT_ID_HERE"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -92,7 +93,10 @@ export default function App() {
   
   const [appSettings, setAppSettings] = useState({ initialInvestment: 1219.00 });
   const [cogs, setCogs] = useState({
-    spoolCost: 20.00, gramsUsed: 250, concreteCost: 0.15, lbsUsed: 5, boxCost: 1.25
+    spoolCost: 20.00, gramsUsed: 250, 
+    concreteCost: 0.15, lbsUsed: 5, 
+    boxCost: 1.25, bubbleWrapCost: 0.30,
+    screwsCost: 0.10, insertsCost: 0.15, washersCost: 0.05
   });
 
   // --- FIREBASE AUTHENTICATION ---
@@ -125,7 +129,7 @@ export default function App() {
       (snap) => setMileages(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
     
     const unsubCogs = onSnapshot(getDocRef('settings', 'cogs'), 
-      (docSnap) => { if (docSnap.exists()) setCogs(docSnap.data()); }, console.error);
+      (docSnap) => { if (docSnap.exists()) setCogs({ ...cogs, ...docSnap.data() }); }, console.error);
     const unsubSettings = onSnapshot(getDocRef('settings', 'app'), 
       (docSnap) => { if (docSnap.exists()) setAppSettings(docSnap.data()); }, console.error);
 
@@ -171,7 +175,13 @@ export default function App() {
   const availableGolfFund = remainingToRecoup === 0 ? Math.max(0, netProfit - taxReserve) : 0;
 
   const petgCostPerGram = cogs.spoolCost / 1000;
-  const costPerTrainer = (petgCostPerGram * cogs.gramsUsed) + (cogs.concreteCost * cogs.lbsUsed) + Number(cogs.boxCost);
+  const costPerTrainer = (petgCostPerGram * cogs.gramsUsed) + 
+                         (cogs.concreteCost * cogs.lbsUsed) + 
+                         Number(cogs.boxCost || 0) + 
+                         Number(cogs.bubbleWrapCost || 0) + 
+                         Number(cogs.screwsCost || 0) + 
+                         Number(cogs.insertsCost || 0) + 
+                         Number(cogs.washersCost || 0);
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   
@@ -634,14 +644,36 @@ function Manufacturing({ cogs, onUpdate, costPerTrainer, petgCostPerGram, format
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-4 text-slate-800">COGS Variables</h2>
-          <div className="space-y-4">
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Cost of Spool (PETG)</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="spoolCost" value={cogs.spoolCost} onChange={handleChange} className="input-field pl-8" /></div></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Grams Used Per Trainer</label><input type="number" name="gramsUsed" value={cogs.gramsUsed} onChange={handleChange} className="input-field" /></div>
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+            
+            <h3 className="font-medium text-slate-700">Raw Materials</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-xs text-slate-500 mb-1">Spool Cost (PETG)</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="spoolCost" value={cogs.spoolCost} onChange={handleChange} className="input-field pl-8" /></div></div>
+              <div><label className="block text-xs text-slate-500 mb-1">Grams Used</label><input type="number" name="gramsUsed" value={cogs.gramsUsed} onChange={handleChange} className="input-field" /></div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              <div><label className="block text-xs text-slate-500 mb-1">Concrete Cost per lb</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="concreteCost" value={cogs.concreteCost} onChange={handleChange} className="input-field pl-8" /></div></div>
+              <div><label className="block text-xs text-slate-500 mb-1">lbs Used</label><input type="number" step="0.1" name="lbsUsed" value={cogs.lbsUsed} onChange={handleChange} className="input-field" /></div>
+            </div>
+
             <hr className="border-slate-100 my-4" />
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Concrete Cost per lb</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="concreteCost" value={cogs.concreteCost} onChange={handleChange} className="input-field pl-8" /></div></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">lbs Used Per Trainer</label><input type="number" step="0.1" name="lbsUsed" value={cogs.lbsUsed} onChange={handleChange} className="input-field" /></div>
+            
+            <h3 className="font-medium text-slate-700">Hardware (Cost Per Trainer)</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div><label className="block text-xs text-slate-500 mb-1">Screws</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="screwsCost" value={cogs.screwsCost} onChange={handleChange} className="input-field pl-8" /></div></div>
+              <div><label className="block text-xs text-slate-500 mb-1">Inserts</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="insertsCost" value={cogs.insertsCost} onChange={handleChange} className="input-field pl-8" /></div></div>
+              <div><label className="block text-xs text-slate-500 mb-1">Washers</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="washersCost" value={cogs.washersCost} onChange={handleChange} className="input-field pl-8" /></div></div>
+            </div>
+
             <hr className="border-slate-100 my-4" />
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Box / Packaging Cost</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="boxCost" value={cogs.boxCost} onChange={handleChange} className="input-field pl-8" /></div></div>
+            
+            <h3 className="font-medium text-slate-700">Packaging (Cost Per Trainer)</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-xs text-slate-500 mb-1">Box / Mailer</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="boxCost" value={cogs.boxCost} onChange={handleChange} className="input-field pl-8" /></div></div>
+              <div><label className="block text-xs text-slate-500 mb-1">Bubble Wrap</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="bubbleWrapCost" value={cogs.bubbleWrapCost} onChange={handleChange} className="input-field pl-8" /></div></div>
+            </div>
+
           </div>
         </div>
 
@@ -651,7 +683,9 @@ function Manufacturing({ cogs, onUpdate, costPerTrainer, petgCostPerGram, format
           <div className="space-y-4 z-10">
             <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">PETG Cost</span><span className="font-medium">{formatCurrency(petgCostPerGram * cogs.gramsUsed)}</span></div>
             <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Concrete Cost</span><span className="font-medium">{formatCurrency(cogs.concreteCost * cogs.lbsUsed)}</span></div>
-            <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Box & Packaging</span><span className="font-medium">{formatCurrency(cogs.boxCost)}</span></div>
+            <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Hardware (Screws, Inserts, Washers)</span><span className="font-medium">{formatCurrency(Number(cogs.screwsCost || 0) + Number(cogs.insertsCost || 0) + Number(cogs.washersCost || 0))}</span></div>
+            <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Packaging (Box & Wrap)</span><span className="font-medium">{formatCurrency(Number(cogs.boxCost || 0) + Number(cogs.bubbleWrapCost || 0))}</span></div>
+            
             <div className="pt-4 flex justify-between items-center"><span className="text-lg font-bold text-slate-200">Total True Cost:</span><span className="text-3xl font-extrabold text-emerald-400">{formatCurrency(costPerTrainer)}</span></div>
           </div>
         </div>
