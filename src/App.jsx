@@ -268,6 +268,9 @@ export default function App() {
   const availableGolfFund = isGolfUnlocked ? Math.max(0, safeCash - initialGoal - drawsGolf - drawsOther) : 0;
 
   // --- WAREHOUSE & PREDICTIVE ENGINE ---
+  const INVENTORY_START_DATE = '2026-04-29';
+  const inventoryUnitsSold = useMemo(() => revenues.filter(r => r.date >= INVENTORY_START_DATE).reduce((sum, r) => sum + Number(r.qty || 1), 0), [revenues]);
+
   const fourteenDaysAgoStr = useMemo(() => {
     const d = new Date(); d.setDate(d.getDate() - 14);
     return d.toISOString().split('T')[0];
@@ -283,15 +286,15 @@ export default function App() {
 
   const currentStock = useMemo(() => ({
     // Note: Legacy "PETG (grams)" gets automatically added into Black PETG to save their old data
-    blackPetg: ((restockTotals['Black PETG (grams)'] || 0) + (restockTotals['PETG (grams)'] || 0)) - (totalUnitsSold * (cogs.blackGramsUsed || 533)),
-    whitePetg: (restockTotals['White PETG (grams)'] || 0) - (totalUnitsSold * (cogs.whiteGramsUsed || 11)),
-    concrete: (restockTotals['Concrete (lbs)'] || 0) - (totalUnitsSold * (cogs.lbsUsed || 5)),
-    boxes: (restockTotals['Boxes (qty)'] || 0) - totalUnitsSold,
-    wrap: (restockTotals['Bubble Wrap (qty)'] || 0) - totalUnitsSold,
-    screws: (restockTotals['Screws (sets)'] || 0) - totalUnitsSold,
-    inserts: (restockTotals['Inserts (sets)'] || 0) - totalUnitsSold,
-    washers: (restockTotals['Washers (sets)'] || 0) - totalUnitsSold,
-  }), [restockTotals, totalUnitsSold, cogs]);
+    blackPetg: ((restockTotals['Black PETG (grams)'] || 0) + (restockTotals['PETG (grams)'] || 0)) - (inventoryUnitsSold * (cogs.blackGramsUsed || 533)),
+    whitePetg: (restockTotals['White PETG (grams)'] || 0) - (inventoryUnitsSold * (cogs.whiteGramsUsed || 11)),
+    concrete: (restockTotals['Concrete (lbs)'] || 0) - (inventoryUnitsSold * (cogs.lbsUsed || 5)),
+    boxes: (restockTotals['Boxes (qty)'] || 0) - inventoryUnitsSold,
+    wrap: (restockTotals['Bubble Wrap (qty)'] || 0) - inventoryUnitsSold,
+    screws: (restockTotals['Screws (sets)'] || 0) - inventoryUnitsSold,
+    inserts: (restockTotals['Inserts (sets)'] || 0) - inventoryUnitsSold,
+    washers: (restockTotals['Washers (sets)'] || 0) - inventoryUnitsSold,
+  }), [restockTotals, inventoryUnitsSold, cogs]);
 
   const buildableUnits = useMemo(() => Math.floor(Math.min(
     cogs.blackGramsUsed > 0 ? Math.max(0, currentStock.blackPetg / cogs.blackGramsUsed) : Infinity,
