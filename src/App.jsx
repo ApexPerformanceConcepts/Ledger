@@ -661,7 +661,7 @@ function Analytics({ revenues, expenses, formatCurrency }) {
                     style={{ backgroundColor: bgColor, color: textColor }}
                   >
                     {cell}
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 bg-zinc-900 text-white px-4 py-2.5 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none">
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-zinc-900/95 backdrop-blur-sm text-white px-4 py-2.5 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none border border-zinc-700">
                       <div className="font-bold text-[11px] uppercase tracking-widest text-zinc-400 mb-0.5">{cell}</div>
                       <div className="text-white font-semibold">{formatCurrency(rev)}</div>
                     </div>
@@ -709,7 +709,7 @@ function Analytics({ revenues, expenses, formatCurrency }) {
                   <div key={data.month} className="flex flex-col items-center flex-1 min-w-[50px] group relative">
                     
                     {/* Unified Multi-Data Tooltip */}
-                    <div className="absolute bottom-full mb-4 left-1/2 transform -translate-x-1/2 bg-zinc-900 text-white px-5 py-4 rounded-2xl shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-2 group-hover:translate-y-0 whitespace-nowrap z-50 pointer-events-none flex flex-col gap-2">
+                    <div className="absolute bottom-[40%] left-1/2 transform -translate-x-1/2 bg-zinc-900/95 backdrop-blur-sm border border-zinc-800 text-white px-5 py-4 rounded-2xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-4 group-hover:translate-y-0 whitespace-nowrap z-50 pointer-events-none flex flex-col gap-2">
                       <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1 border-b border-zinc-800 pb-2">{monthName} '{year.slice(2)}</div>
                       <div className="flex justify-between items-center gap-6 text-sm">
                         <span className="flex items-center font-medium text-zinc-300"><span className="w-2 h-2 rounded-full bg-blue-500 mr-2"></span>Revenue</span> 
