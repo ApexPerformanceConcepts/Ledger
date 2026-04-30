@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
-  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X, ArrowUpDown, ChevronUp, ChevronDown, PieChart, BarChart3, Printer, Zap, ArrowRightLeft, ShieldCheck, Target, Package, AlertTriangle, Image as ImageIcon, Map as MapIcon, Loader2, Inbox, PackageOpen
+  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X, ArrowUpDown, ChevronUp, ChevronDown, PieChart, BarChart3, Printer, Zap, ArrowRightLeft, ShieldCheck, Target, Package, AlertTriangle, Image as ImageIcon, Map as MapIcon, Loader2, Inbox, PackageOpen, TrendingUp, Sparkles
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
@@ -748,6 +748,8 @@ const tileMapData = [
 ];
 
 function Analytics({ revenues, expenses, formatCurrency }) {
+  const [demandTimeframe, setDemandTimeframe] = useState('lifetime');
+
   const monthlyData = useMemo(() => {
     const dataMap = {};
     revenues.forEach(r => {
@@ -808,6 +810,65 @@ function Analytics({ revenues, expenses, formatCurrency }) {
     tileMapData.forEach(t => arr[t.r][t.c] = t.code);
     return arr;
   }, []);
+
+  // --- DAY OF WEEK DEMAND ANALYSIS ---
+  const { dayOfWeekData, maxDayUnits, bestDay } = useMemo(() => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const counts = [0, 0, 0, 0, 0, 0, 0];
+    const revs = [0, 0, 0, 0, 0, 0, 0];
+
+    let filteredRevenues = revenues;
+    if (demandTimeframe !== 'lifetime') {
+      const daysToSubtract = demandTimeframe === '30' ? 30 : 14;
+      const cutoffDate = new Date(new Date().setDate(new Date().getDate() - daysToSubtract)).toISOString().split('T')[0];
+      filteredRevenues = revenues.filter(r => r.date >= cutoffDate);
+    }
+
+    filteredRevenues.forEach(r => {
+      if (!r.date) return;
+      const [y, m, d] = r.date.split('-');
+      const dateObj = new Date(y, m - 1, d);
+      const dayIdx = dateObj.getDay();
+      counts[dayIdx] += Number(r.qty || 1);
+      revs[dayIdx] += Number(r.gross || 0);
+    });
+
+    const parsedData = days.map((day, idx) => ({
+      day,
+      short: day.substring(0, 3),
+      units: counts[idx],
+      rev: revs[idx],
+      isWeekend: idx === 0 || idx === 6
+    }));
+
+    const maxUnits = Math.max(1, ...parsedData.map(d => d.units));
+    const best = parsedData.reduce((max, d) => d.units > max.units ? d : max, parsedData[0]);
+
+    return { dayOfWeekData: parsedData, maxDayUnits: maxUnits, bestDay: best };
+  }, [revenues, demandTimeframe]);
+
+  // --- APEX AI FORECASTING (Einstein) ---
+  const forecastData = useMemo(() => {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(new Date().setDate(now.getDate() - 30)).toISOString().split('T')[0];
+    const sixtyDaysAgo = new Date(new Date().setDate(now.getDate() - 60)).toISOString().split('T')[0];
+
+    const last30Revs = revenues.filter(r => r.date >= thirtyDaysAgo);
+    const prev30Revs = revenues.filter(r => r.date >= sixtyDaysAgo && r.date < thirtyDaysAgo);
+
+    const current30Rev = last30Revs.reduce((sum, r) => sum + Number(r.gross || 0), 0);
+    const current30Units = last30Revs.reduce((sum, r) => sum + Number(r.qty || 1), 0);
+    const prev30Rev = prev30Revs.reduce((sum, r) => sum + Number(r.gross || 0), 0);
+
+    const dailyRevVelocity = current30Rev / 30;
+    const dailyUnitVelocity = current30Units / 30;
+
+    const projectedNext30Rev = dailyRevVelocity * 30;
+    const projectedNext30Units = Math.round(dailyUnitVelocity * 30);
+    const momGrowth = prev30Rev === 0 ? (current30Rev > 0 ? 100 : 0) : ((current30Rev - prev30Rev) / prev30Rev) * 100;
+    
+    return { current30Rev, prev30Rev, projectedNext30Rev, projectedNext30Units, momGrowth };
+  }, [revenues]);
 
   return (
     <div className="space-y-8 animate-in fade-in">
@@ -924,18 +985,114 @@ function Analytics({ revenues, expenses, formatCurrency }) {
                 </div>
               </div>
               <div className="flex flex-col space-y-4 w-full sm:w-auto">
-                {categoryData.map(slice => (
-                  <div key={slice.category} className="flex items-center justify-between space-x-6">
-                    <div className="flex items-center"><span className="w-2 h-2 rounded-full mr-3" style={{ backgroundColor: slice.color }}></span><span className="text-sm font-medium text-zinc-600">{slice.category}</span></div>
-                    <div className="flex items-center space-x-3"><span className="text-sm font-semibold text-zinc-900">{formatCurrency(slice.amount)}</span><span className="text-xs font-bold text-zinc-400 w-8 text-right">{Math.round(slice.pct)}%</span></div>
-                  </div>
-                ))}
+            {categoryData.map(slice => (
+              <div key={slice.category} className="flex items-center justify-between space-x-6">
+                <div className="flex items-center"><span className="w-2 h-2 rounded-full mr-3" style={{ backgroundColor: slice.color }}></span><span className="text-sm font-medium text-zinc-600">{slice.category}</span></div>
+                <div className="flex items-center space-x-3"><span className="text-sm font-semibold text-zinc-900">{formatCurrency(slice.amount)}</span><span className="text-xs font-bold text-zinc-400 w-8 text-right">{Math.round(slice.pct)}%</span></div>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    {/* DAY OF WEEK DEMAND ANALYSIS */}
+    <div className="lg:col-span-2 bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow">
+      <div className="flex flex-col lg:flex-row gap-10 items-center h-full">
+        
+        <div className="flex-1 w-full space-y-5 flex flex-col justify-center h-full">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 pb-4">
+            <h3 className="font-bold text-zinc-900 tracking-tight text-lg">Demand Pattern Analysis</h3>
+            <div className="flex bg-zinc-100/80 p-1 rounded-xl w-max">
+              <button onClick={() => setDemandTimeframe('14')} className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${demandTimeframe === '14' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}>14D</button>
+              <button onClick={() => setDemandTimeframe('30')} className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${demandTimeframe === '30' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}>30D</button>
+              <button onClick={() => setDemandTimeframe('lifetime')} className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${demandTimeframe === 'lifetime' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}>All</button>
+            </div>
+          </div>
+          
+          <p className="text-sm font-medium text-zinc-500 leading-relaxed max-w-sm">
+            Based on your <strong className="text-zinc-700">{demandTimeframe === 'lifetime' ? 'lifetime' : `last ${demandTimeframe} days`}</strong> ledger data, your peak sales velocity occurs on <strong className="text-zinc-900">{bestDay?.day || 'N/A'}s</strong>, accounting for <strong className="text-blue-600">{formatCurrency(bestDay?.rev || 0)}</strong> in total gross revenue.
+          </p>
+          {bestDay?.units > 0 && (
+            <div className="p-4 bg-blue-50/50 border border-blue-100/50 rounded-2xl">
+              <div className="inline-flex items-center text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-2">
+                <Zap size={12} className="mr-1.5" /> Actionable Insight
+              </div>
+              <p className="text-xs font-medium text-zinc-600">
+                Consider boosting your eBay promoted listing budget heavily on <strong>{bestDay?.day} mornings</strong> to capitalize on high buyer intent.
+              </p>
             </div>
           )}
         </div>
+
+        <div className="flex-1 w-full flex items-end justify-between space-x-2 h-[240px] pt-6 border-b border-zinc-100">
+          {dayOfWeekData.map((d) => {
+            const height = Math.max(5, (d.units / maxDayUnits) * 100);
+            const isBest = d.day === bestDay?.day && d.units > 0;
+            return (
+              <div key={d.day} className="flex flex-col items-center flex-1 group h-full">
+                <div className="w-full relative flex justify-center h-full items-end pb-3">
+                  <div className="absolute bottom-full mb-3 bg-zinc-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-2 group-hover:translate-y-0 whitespace-nowrap z-10 pointer-events-none shadow-lg">
+                    {d.units} units
+                  </div>
+                  <div 
+                    className={`w-full max-w-[48px] rounded-t-lg transition-all duration-500 ${isBest ? 'bg-blue-500' : 'bg-zinc-200 group-hover:bg-zinc-300'}`}
+                    style={{ height: `${height}%` }}
+                  ></div>
+                </div>
+                <div className={`text-[10px] font-bold uppercase tracking-widest mt-2 transition-colors ${isBest ? 'text-blue-600' : 'text-zinc-400 group-hover:text-zinc-700'}`}>{d.short}</div>
+              </div>
+            )
+          })}
+        </div>
+
       </div>
     </div>
+
+    {/* APEX AI FORECAST CARD */}
+    <div className="lg:col-span-1 bg-zinc-950 backdrop-blur-md rounded-3xl border border-zinc-800 p-8 shadow-2xl flex flex-col relative overflow-hidden group hover:shadow-[0_8px_30px_rgb(0,0,0,0.4)] transition-all">
+      <div className="absolute top-0 right-0 p-6 opacity-[0.03] text-white transition-transform duration-700 group-hover:scale-110 group-hover:rotate-12"><Sparkles size={150} /></div>
+      
+      <h3 className="font-bold text-white tracking-tight text-lg flex items-center mb-6 z-10">
+        <Sparkles size={16} className="text-indigo-400 mr-2" /> Apex AI Forecast
+      </h3>
+      
+      <div className="z-10 flex-1 flex flex-col justify-center py-4">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Projected Next 30 Days</p>
+        <div className="text-4xl sm:text-5xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-indigo-400 to-purple-400 mb-2">
+          <AnimatedNumber value={forecastData.projectedNext30Rev} formatCurrency={formatCurrency} />
+        </div>
+        <p className="text-sm font-medium text-zinc-400 flex items-center">
+          ~<AnimatedNumber value={forecastData.projectedNext30Units} isInt={true} /> units <span className="text-zinc-600 ml-1">at current velocity</span>
+        </p>
+      </div>
+
+      <div className="mt-6 pt-6 border-t border-zinc-800/80 z-10">
+        <div className="flex justify-between items-end mb-3">
+          <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 flex items-center"><TrendingUp size={12} className="mr-1.5"/> MoM Growth</span>
+          <span className={`text-sm font-bold tracking-tight ${forecastData.momGrowth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {forecastData.momGrowth >= 0 ? '+' : ''}{forecastData.momGrowth.toFixed(1)}%
+          </span>
+        </div>
+        
+        <div className="w-full bg-zinc-800/50 rounded-full h-1.5 overflow-hidden shadow-inner">
+          <div 
+            className={`h-full rounded-full transition-all duration-1000 ease-out ${forecastData.momGrowth >= 0 ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]' : 'bg-rose-400'}`} 
+            style={{ width: `${Math.min(100, Math.max(0, 50 + forecastData.momGrowth / 2))}%` }} 
+          ></div>
+        </div>
+        
+        <div className="flex justify-between mt-3 text-xs font-medium text-zinc-500">
+          <span>Last 30: {formatCurrency(forecastData.prev30Rev)}</span>
+          <span>Current: {formatCurrency(forecastData.current30Rev)}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
   );
 }
 
@@ -962,14 +1119,14 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
 
   return (
     <div className="space-y-8 animate-in fade-in">
-      <div className={`rounded-[2.5rem] p-10 flex flex-col sm:flex-row sm:items-center justify-between relative overflow-hidden transition-all duration-500 shadow-xl ${buildableUnits < 10 ? 'bg-amber-100 text-amber-900' : 'bg-zinc-900 text-white shadow-zinc-900/20'}`}>
-        <div className="absolute top-0 right-0 p-8 opacity-5"><Package size={200} /></div>
+      <div className={`rounded-[2.5rem] p-10 flex flex-col sm:flex-row sm:items-center justify-between relative overflow-hidden transition-all duration-500 shadow-xl ${buildableUnits < 10 ? 'bg-amber-100 text-amber-900' : 'bg-white/90 backdrop-blur-md border border-zinc-200 text-zinc-900 shadow-[0_8px_30px_rgb(0,0,0,0.06)]'}`}>
+        <div className="absolute top-0 right-0 p-8 opacity-[0.03] text-zinc-900"><Package size={200} /></div>
         <div className="z-10">
           <h2 className="text-2xl font-bold tracking-tight">Production Capacity</h2>
-          <p className={`text-sm font-medium mt-2 ${buildableUnits < 10 ? 'text-amber-700' : 'text-zinc-400'}`}>Limited by lowest raw material</p>
+          <p className={`text-sm font-medium mt-2 ${buildableUnits < 10 ? 'text-amber-700' : 'text-zinc-500'}`}>Limited by lowest raw material</p>
         </div>
         <div className="z-10 mt-6 sm:mt-0 text-left sm:text-right">
-          <div className="text-7xl font-semibold tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-white to-zinc-400"><AnimatedNumber value={buildableUnits} isInt={true} /></div>
+          <div className={`text-7xl font-bold tracking-tighter ${buildableUnits < 10 ? '' : 'text-zinc-900'}`}><AnimatedNumber value={buildableUnits} isInt={true} /></div>
           <div className={`text-[11px] font-bold uppercase tracking-widest mt-2 ${buildableUnits < 10 ? 'text-amber-700' : 'text-zinc-400'}`}>Buildable Units</div>
         </div>
       </div>
@@ -1681,7 +1838,20 @@ function Manufacturing({ cogs, onUpdate, costPerTrainer, blackPetgCostPerGram, w
   return (
     <div className="space-y-6 animate-in fade-in">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+        <div className="bg-zinc-900 rounded-[2.5rem] p-10 shadow-2xl shadow-zinc-900/20 text-white flex flex-col justify-center relative overflow-hidden order-1">
+          <div className="absolute top-0 right-0 p-8 opacity-5"><Settings size={200} className="animate-[spin_40s_linear_infinite]" /></div>
+          <h2 className="text-2xl font-bold tracking-tight text-white mb-10 z-10">Unit Economics</h2>
+          <div className="space-y-5 z-10 text-sm font-medium">
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Black PETG</span><span className="font-bold tracking-tight">{formatCurrency(blackPetgCostPerGram * (cogs.blackGramsUsed || 533))}</span></div>
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">White PETG</span><span className="font-bold tracking-tight">{formatCurrency(whitePetgCostPerGram * (cogs.whiteGramsUsed || 11))}</span></div>
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Concrete</span><span className="font-bold tracking-tight">{formatCurrency(cogs.concreteCost * cogs.lbsUsed)}</span></div>
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Hardware</span><span className="font-bold tracking-tight">{formatCurrency(Number(cogs.screwsCost || 0) + Number(cogs.insertsCost || 0) + Number(cogs.washersCost || 0))}</span></div>
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Packaging</span><span className="font-bold tracking-tight">{formatCurrency(Number(cogs.boxCost || 0) + Number(cogs.bubbleWrapCost || 0))}</span></div>
+            <div className="pt-6 flex justify-between items-end"><span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Total COGS</span><span className="text-5xl font-semibold tracking-tighter text-emerald-400">{formatCurrency(costPerTrainer)}</span></div>
+          </div>
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] order-2">
           <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-8">Supply Variables</h2>
           <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-2 hide-scrollbar">
             <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Raw Materials</h3>
@@ -1710,19 +1880,6 @@ function Manufacturing({ cogs, onUpdate, costPerTrainer, blackPetgCostPerGram, w
               <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Box</label><input type="number" step="0.01" name="boxCost" value={cogs.boxCost} onChange={handleChange} className={inlineInputStyle} /></div>
               <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Wrap</label><input type="number" step="0.01" name="bubbleWrapCost" value={cogs.bubbleWrapCost} onChange={handleChange} className={inlineInputStyle} /></div>
             </div>
-          </div>
-        </div>
-
-        <div className="bg-zinc-900 rounded-[2.5rem] p-10 shadow-2xl shadow-zinc-900/20 text-white flex flex-col justify-center relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-5"><Settings size={200} className="animate-[spin_40s_linear_infinite]" /></div>
-          <h2 className="text-2xl font-bold tracking-tight text-white mb-10 z-10">Unit Economics</h2>
-          <div className="space-y-5 z-10 text-sm font-medium">
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Black PETG</span><span className="font-bold tracking-tight">{formatCurrency(blackPetgCostPerGram * (cogs.blackGramsUsed || 533))}</span></div>
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">White PETG</span><span className="font-bold tracking-tight">{formatCurrency(whitePetgCostPerGram * (cogs.whiteGramsUsed || 11))}</span></div>
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Concrete</span><span className="font-bold tracking-tight">{formatCurrency(cogs.concreteCost * cogs.lbsUsed)}</span></div>
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Hardware</span><span className="font-bold tracking-tight">{formatCurrency(Number(cogs.screwsCost || 0) + Number(cogs.insertsCost || 0) + Number(cogs.washersCost || 0))}</span></div>
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Packaging</span><span className="font-bold tracking-tight">{formatCurrency(Number(cogs.boxCost || 0) + Number(cogs.bubbleWrapCost || 0))}</span></div>
-            <div className="pt-6 flex justify-between items-end"><span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Total COGS</span><span className="text-5xl font-semibold tracking-tighter text-emerald-400">{formatCurrency(costPerTrainer)}</span></div>
           </div>
         </div>
       </div>
