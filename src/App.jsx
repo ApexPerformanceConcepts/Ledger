@@ -404,7 +404,7 @@ export default function App() {
   const TabButton = ({ id, icon: Icon, label }) => (
     <button 
       onClick={() => setActiveTab(id)} 
-      className={`relative flex items-center space-x-2 px-5 py-2.5 text-sm font-semibold transition-all duration-300 whitespace-nowrap rounded-full z-10 ${activeTab === id ? 'text-zinc-900' : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200/50'}`}
+      className={`relative flex items-center space-x-2 px-5 py-2.5 text-sm font-semibold transition-all duration-300 whitespace-nowrap rounded-full z-10 flex-shrink-0 ${activeTab === id ? 'text-zinc-900' : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200/50'}`}
     >
       {activeTab === id && <div className="absolute inset-0 bg-white rounded-full shadow-[0_2px_10px_rgba(0,0,0,0.06)] border border-zinc-200/50 -z-10 animate-in zoom-in-95 duration-200"></div>}
       <Icon size={16} strokeWidth={activeTab === id ? 2.5 : 2} className={activeTab === id ? 'text-blue-600' : ''} />
@@ -433,16 +433,20 @@ export default function App() {
               <p className="text-[11px] font-bold tracking-widest uppercase text-zinc-400 mt-1">Enterprise Ledger</p>
             </div>
           </div>
-          <div className="flex overflow-x-auto hide-scrollbar gap-1 bg-zinc-100/50 p-1.5 rounded-full border border-zinc-200/50 w-max mb-1">
-            <TabButton id="dashboard" icon={LayoutDashboard} label="Command Center" />
-            <TabButton id="analytics" icon={MapIcon} label="Analytics" />
-            <TabButton id="revenue" icon={DollarSign} label="Revenue" />
-            <TabButton id="warehouse" icon={Package} label="Warehouse" />
-            <TabButton id="expenses" icon={Receipt} label="Vault" />
-            <TabButton id="equity" icon={Wallet} label="Equity" />
-            <TabButton id="mileage" icon={Car} label="Mileage" />
-            <TabButton id="cogs" icon={Settings} label="Manufacturing" />
-            <TabButton id="tax" icon={ClipboardList} label="Tax Prep" />
+          
+          {/* FIX: Edge-to-Edge Scrollable Tabs Container */}
+          <div className="overflow-x-auto hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 pb-2 -mb-2">
+            <div className="flex gap-1 bg-zinc-100/50 p-1.5 rounded-full border border-zinc-200/50 w-max mb-1">
+              <TabButton id="dashboard" icon={LayoutDashboard} label="Command Center" />
+              <TabButton id="analytics" icon={MapIcon} label="Analytics" />
+              <TabButton id="revenue" icon={DollarSign} label="Revenue" />
+              <TabButton id="warehouse" icon={Package} label="Warehouse" />
+              <TabButton id="expenses" icon={Receipt} label="Vault" />
+              <TabButton id="equity" icon={Wallet} label="Equity" />
+              <TabButton id="mileage" icon={Car} label="Mileage" />
+              <TabButton id="cogs" icon={Settings} label="Manufacturing" />
+              <TabButton id="tax" icon={ClipboardList} label="Tax Prep" />
+            </div>
           </div>
         </div>
       </header>
@@ -488,7 +492,7 @@ export default function App() {
               
               <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] group">
                 <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center"><Target size={14} className="mr-2"/> Mfg. Efficiency</h3>
-                <div className="text-4xl font-bold tracking-tighter mt-3 bg-clip-text text-transparent bg-gradient-to-br from-emerald-500 to-emerald-700">
+                <div className="text-3xl sm:text-4xl font-bold tracking-tighter mt-3 bg-clip-text text-transparent bg-gradient-to-br from-emerald-500 to-emerald-700">
                   <AnimatedNumber value={avgProfitPerUnit} formatCurrency={formatCurrency} />
                 </div>
                 <p className="text-sm font-medium text-zinc-400 mt-2">Avg true profit per unit</p>
@@ -500,7 +504,7 @@ export default function App() {
 
               <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] group">
                 <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center"><ShieldCheck size={14} className="mr-2"/> The Tax Shield</h3>
-                <div className="text-4xl font-bold tracking-tighter mt-3 bg-clip-text text-transparent bg-gradient-to-br from-blue-500 to-indigo-600">
+                <div className="text-3xl sm:text-4xl font-bold tracking-tighter mt-3 bg-clip-text text-transparent bg-gradient-to-br from-blue-500 to-indigo-600">
                   <AnimatedNumber value={taxShield} formatCurrency={formatCurrency} />
                 </div>
                 <p className="text-sm font-medium text-zinc-400 mt-2 leading-tight">Total cash value of legal deductions (Expenses + Mileage)</p>
@@ -509,7 +513,7 @@ export default function App() {
               <div className={`rounded-3xl border p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all ${drawsGolf > 0 || isGolfUnlocked ? 'bg-gradient-to-br from-[#f0fdf4] to-white border-emerald-100' : 'bg-white/80 backdrop-blur-md border-zinc-100'}`}>
                 <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2 flex items-center justify-center">Golf Fund</h3>
                 <div className="text-center">
-                  <div className={`text-4xl font-bold tracking-tighter mt-1 ${drawsGolf > 0 || isGolfUnlocked ? 'bg-clip-text text-transparent bg-gradient-to-br from-emerald-500 to-emerald-700' : 'text-zinc-400'}`}>
+                  <div className={`text-3xl sm:text-4xl font-bold tracking-tighter mt-1 ${drawsGolf > 0 || isGolfUnlocked ? 'bg-clip-text text-transparent bg-gradient-to-br from-emerald-500 to-emerald-700' : 'text-zinc-400'}`}>
                     <AnimatedNumber value={drawsGolf} formatCurrency={formatCurrency} />
                   </div>
                   <span className="block text-xs font-medium text-zinc-400 mt-2">Total Accounted For / Withdrawn</span>
@@ -560,7 +564,7 @@ function QuickRevenueModal({ onClose, onAdd }) {
       <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
         <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-white/50 backdrop-blur-md">
           <h2 className="text-lg font-bold tracking-tight text-zinc-900 flex items-center">Log New Sale</h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full"><X size={18}/></button>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2.5 rounded-full"><X size={18}/></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
           <div className="grid grid-cols-2 gap-4">
@@ -605,7 +609,7 @@ function QuickExpenseModal({ onClose, onAdd, uploadReceipt }) {
       <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
         <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
           <h2 className="text-lg font-bold tracking-tight text-zinc-900">Log Expense</h2>
-          <button onClick={onClose} disabled={isUploading} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full"><X size={18}/></button>
+          <button onClick={onClose} disabled={isUploading} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2.5 rounded-full"><X size={18}/></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
           <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
@@ -636,7 +640,7 @@ function QuickEquityModal({ onClose, onAdd }) {
       <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
         <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
           <h2 className="text-lg font-bold tracking-tight text-zinc-900">Transfer Funds</h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full"><X size={18}/></button>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2.5 rounded-full"><X size={18}/></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
           <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
@@ -948,7 +952,7 @@ function ProgressCard({ drawsRecoup, initialGoal, remainingToRecoup, formatCurre
         {!isEditing && <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-zinc-900 transition-colors p-1 opacity-0 group-hover:opacity-100" title="Edit Initial Goal"><Edit2 size={16} /></button>}
       </div>
       <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Remaining to Recoup</h3>
-      <div className="text-4xl font-bold tracking-tighter text-zinc-900 mb-2">
+      <div className="text-3xl sm:text-4xl font-bold tracking-tighter text-zinc-900 mb-2">
         <AnimatedNumber value={remainingToRecoup} formatCurrency={formatCurrency} />
       </div>
       <div className="w-full bg-zinc-100 rounded-full h-1.5 mt-5 overflow-hidden"><div className="bg-zinc-900 h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${percentComplete}%` }}></div></div>
@@ -968,7 +972,7 @@ function DashboardCard({ title, amount, subtitle, color, isNegative, highlight, 
   return (
     <div className={`bg-white/80 backdrop-blur-md rounded-3xl p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${highlight ? 'ring-1 ring-zinc-200/60' : 'border border-zinc-100'}`}>
       <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{title}</h3>
-      <div className={`text-4xl font-bold tracking-tighter mt-3 ${colorMap[color]}`}>
+      <div className={`text-3xl sm:text-4xl font-bold tracking-tighter mt-3 ${colorMap[color]}`}>
         {isNegative && amount > 0 ? '-' : ''}
         <AnimatedNumber value={amount} formatCurrency={formatCurrency} />
       </div>
