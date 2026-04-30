@@ -96,7 +96,7 @@ const MagneticButton = ({ children, onClick, className }) => {
   );
 };
 
-// --- SKELETON LOADER (UX Option 3) ---
+// --- SKELETON LOADER & EMPTY STATES ---
 const DashboardSkeleton = () => (
   <div className="space-y-8 animate-pulse">
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -116,7 +116,6 @@ const DashboardSkeleton = () => (
   </div>
 );
 
-// --- EMPTY STATE (UX Option 4) ---
 const EmptyState = ({ icon: Icon, title, message, colSpan }) => (
   <tr>
     <td colSpan={colSpan || 12} className="p-0">
@@ -130,7 +129,6 @@ const EmptyState = ({ icon: Icon, title, message, colSpan }) => (
     </td>
   </tr>
 );
-
 
 // --- HELPERS ---
 const exportToCsv = (filename, rows) => {
@@ -225,6 +223,7 @@ export default function App() {
   const [equities, setEquities] = useState([]);
   const [mileages, setMileages] = useState([]);
   const [restocks, setRestocks] = useState([]);
+  const [machines, setMachines] = useState([]);
   
   const [appSettings, setAppSettings] = useState({ initialInvestment: 1219.00 });
   const [cogs, setCogs] = useState({
@@ -250,7 +249,6 @@ export default function App() {
     
     const unsubscribe = auth.onAuthStateChanged((u) => {
       setUser(u);
-      // Give a tiny 600ms grace period so the Skeleton animation plays beautifully before snapping in data
       if(u) {
         setTimeout(() => setIsAppReady(true), 600);
       }
@@ -267,6 +265,7 @@ export default function App() {
     const unsubEqs = onSnapshot(getColRef('equities'), (snap) => setEquities(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
     const unsubMiles = onSnapshot(getColRef('mileages'), (snap) => setMileages(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
     const unsubRestocks = onSnapshot(getColRef('restocks'), (snap) => setRestocks(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubMachines = onSnapshot(getColRef('machines'), (snap) => setMachines(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
     
     const unsubCogs = onSnapshot(getDocRef('settings', 'cogs'), (docSnap) => { 
       if (docSnap.exists()) {
@@ -282,7 +281,7 @@ export default function App() {
     }, console.error);
     const unsubSettings = onSnapshot(getDocRef('settings', 'app'), (docSnap) => { if (docSnap.exists()) setAppSettings(docSnap.data()); }, console.error);
 
-    return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubRestocks(); unsubCogs(); unsubSettings(); };
+    return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubRestocks(); unsubMachines(); unsubCogs(); unsubSettings(); };
   }, [user]);
 
   // --- MUTATION HANDLERS ---
@@ -436,9 +435,22 @@ export default function App() {
     return alerts;
   }, [runoutDays, dailySalesVelocity]);
 
+  // --- FLEET MAINTENANCE ENGINE ---
+  const lifetimeHoursPerMachine = Math.floor(totalUnitsSold / Math.max(1, machines.length)) * 3.5;
+
+  const maintenanceAlerts = useMemo(() => {
+    const alerts = [];
+    machines.forEach(m => {
+      const hoursSinceMaintenance = Math.max(0, lifetimeHoursPerMachine - (m.maintenanceOffset || 0));
+      if (hoursSinceMaintenance >= 300) {
+        alerts.push({ name: m.name, hoursOver: (hoursSinceMaintenance - 300).toFixed(1) });
+      }
+    });
+    return alerts;
+  }, [machines, lifetimeHoursPerMachine]);
+
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   
-  // iOS Style Pill Button
   const TabButton = ({ id, icon: Icon, label }) => (
     <button 
       onClick={() => setActiveTab(id)} 
@@ -478,6 +490,7 @@ export default function App() {
               <TabButton id="analytics" icon={MapIcon} label="Analytics" />
               <TabButton id="revenue" icon={DollarSign} label="Revenue" />
               <TabButton id="warehouse" icon={Package} label="Warehouse" />
+              <TabButton id="fleet" icon={Printer} label="Fleet ROI" />
               <TabButton id="expenses" icon={Receipt} label="Vault" />
               <TabButton id="equity" icon={Wallet} label="Equity" />
               <TabButton id="mileage" icon={Car} label="Mileage" />
@@ -505,6 +518,21 @@ export default function App() {
                       <ul className="text-amber-800 text-sm mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 font-medium">
                         {lowStockAlerts.map((alert, i) => (
                           <li key={i} className="bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100/50">{alert.name} <span className="opacity-60 text-xs ml-1">in {alert.days}d</span></li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {maintenanceAlerts.length > 0 && (
+                  <div className="bg-white/80 backdrop-blur-md border border-rose-200/60 p-5 rounded-3xl shadow-[0_8px_30px_rgb(225,29,72,0.1)] flex items-start mt-4">
+                    <div className="bg-rose-100 p-2 rounded-full mr-4"><Settings className="text-rose-600 flex-shrink-0 animate-[spin_4s_linear_infinite]" size={20} /></div>
+                    <div>
+                      <h3 className="text-rose-900 font-bold text-sm tracking-wide">FLEET MAINTENANCE REQUIRED</h3>
+                      <p className="text-rose-700/80 text-sm mt-1 font-medium">The following hardware has exceeded the 300-hour print threshold and requires carbon rod cleaning & Z-axis greasing:</p>
+                      <ul className="text-rose-800 text-sm mt-2 flex flex-wrap gap-2 font-medium">
+                        {maintenanceAlerts.map((alert, i) => (
+                          <li key={i} className="bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100/50">{alert.name} <span className="opacity-60 text-xs ml-1 font-bold">({alert.hoursOver}h over)</span></li>
                         ))}
                       </ul>
                     </div>
@@ -581,6 +609,7 @@ export default function App() {
 
             {activeTab === 'analytics' && <Analytics revenues={revenues} expenses={expenses} formatCurrency={formatCurrency} />}
             {activeTab === 'warehouse' && <Warehouse restocks={restocks} currentStock={currentStock} buildableUnits={buildableUnits} runoutDays={runoutDays} dailySalesVelocity={dailySalesVelocity} onAdd={(data) => handleAdd('restocks', data)} onDelete={(id) => handleDelete('restocks', id)} />}
+            {activeTab === 'fleet' && <FleetCommand machines={machines} totalTrueProfit={totalTrueProfit} totalUnitsSold={totalUnitsSold} onAdd={(data) => handleAdd('machines', data)} onDelete={(id) => handleDelete('machines', id)} onUpdate={handleUpdateRecord} formatCurrency={formatCurrency} />}
             {activeTab === 'revenue' && <RevenueLog revenues={revenues} costPerTrainer={costPerTrainer} onAdd={(data) => handleAdd('revenues', data)} onUpdate={(id, data) => handleUpdateRecord('revenues', id, data)} onDelete={(id) => handleDelete('revenues', id)} formatCurrency={formatCurrency} />}
             {activeTab === 'expenses' && <ExpenseTracker uploadReceipt={uploadReceipt} expenses={expenses} onAdd={(data) => handleAdd('expenses', data)} onUpdate={(id, data) => handleUpdateRecord('expenses', id, data)} onDelete={(id) => handleDelete('expenses', id)} formatCurrency={formatCurrency} />}
             {activeTab === 'equity' && <OwnerEquity equities={equities} initialGoal={initialGoal} onAdd={(data) => handleAdd('equities', data)} onUpdate={(id, data) => handleUpdateRecord('equities', id, data)} onDelete={(id) => handleDelete('equities', id)} formatCurrency={formatCurrency} />}
@@ -601,7 +630,7 @@ const inlineInputStyle = "w-full border border-zinc-200 rounded-lg px-3 py-1.5 t
 
 function QuickRevenueModal({ onClose, onAdd }) {
   const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', ebay: '', ad: '', shipping: '', state: '' });
-  const [showFees, setShowFees] = useState(false); // UX Option 5
+  const [showFees, setShowFees] = useState(false);
 
   const handleSubmit = (e) => { e.preventDefault(); if(formData.gross) onAdd(formData); };
   return (
@@ -622,7 +651,6 @@ function QuickRevenueModal({ onClose, onAdd }) {
           </div>
           <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Gross Sale ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.gross} onChange={e=>setFormData({...formData, gross:e.target.value})} required/></div>
           
-          {/* Progressive Disclosure for Fees */}
           {!showFees ? (
             <button type="button" onClick={() => setShowFees(true)} className="w-full py-3.5 border border-dashed border-zinc-200 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-zinc-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all flex justify-center items-center">
               <Plus size={14} className="mr-1.5" /> Add Fees & Shipping
@@ -996,6 +1024,118 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
   );
 }
 
+function FleetCommand({ machines, totalTrueProfit, totalUnitsSold, onAdd, onDelete, onUpdate, formatCurrency }) {
+  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], name: '', cost: '' });
+  
+  const addRow = (e) => { 
+    e.preventDefault(); 
+    if (!formData.name || !formData.cost) return; 
+    onAdd({ ...formData, cost: Number(formData.cost), maintenanceOffset: 0 }); 
+    setFormData({ ...formData, name: '', cost: '' }); 
+  };
+
+  const activeMachinesCount = Math.max(1, machines.length);
+  const profitPerMachine = totalTrueProfit / activeMachinesCount;
+  const unitsPerMachine = Math.floor(totalUnitsSold / activeMachinesCount);
+  const lifetimeHoursPerMachine = unitsPerMachine * 3.5; 
+  
+  const totalFleetValue = machines.reduce((sum, m) => sum + Number(m.cost || 0), 0);
+
+  const handleResetMaintenance = (machine) => {
+    if(onUpdate) onUpdate('machines', machine.id, { ...machine, maintenanceOffset: lifetimeHoursPerMachine });
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in pt-8 border-t border-zinc-200/60 mt-8">
+      <div className="bg-zinc-950 rounded-[2.5rem] p-10 shadow-2xl shadow-zinc-900/20 text-white flex flex-col sm:flex-row sm:items-center justify-between relative overflow-hidden">
+        <div className="absolute top-[-50%] right-[-10%] p-8 opacity-[0.03]"><Printer size={400} /></div>
+        <div className="z-10">
+          <h2 className="text-2xl font-bold tracking-tight">Fleet Command</h2>
+          <p className="text-sm font-medium mt-2 text-zinc-400 max-w-md">Distributing total net profit and print hours automatically across active hardware.</p>
+        </div>
+        <div className="z-10 mt-6 sm:mt-0 text-left sm:text-right">
+          <div className="text-5xl font-semibold tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-white to-zinc-400">{formatCurrency(totalFleetValue)}</div>
+          <div className="text-[11px] font-bold uppercase tracking-widest mt-2 text-zinc-500">Total Fleet Value</div>
+        </div>
+      </div>
+
+      {machines.length === 0 ? (
+        <table className="w-full"><tbody className="w-full"><EmptyState icon={Printer} title="No Printers Registered" message="Add your 3D printers below to start automatically tracking their ROI and maintenance schedules." colSpan="1" /></tbody></table>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {machines.map((m) => {
+            const roiRatio = m.cost > 0 ? (profitPerMachine / m.cost) : 0;
+            const percentPaid = Math.min(100, roiRatio * 100);
+            const isPaidOff = roiRatio >= 1;
+            
+            const hoursSinceMaintenance = Math.max(0, lifetimeHoursPerMachine - (m.maintenanceOffset || 0));
+            const maintenanceThreshold = 300; 
+            const maintPercent = Math.min(100, (hoursSinceMaintenance / maintenanceThreshold) * 100);
+            const needsMaintenance = hoursSinceMaintenance >= maintenanceThreshold;
+            
+            return (
+              <div key={m.id} className={`backdrop-blur-md rounded-3xl border p-8 transition-all flex flex-col group relative overflow-hidden ${needsMaintenance ? 'bg-red-50/50 border-red-200/60 shadow-[0_8px_30px_rgb(225,29,72,0.1)]' : 'bg-white/80 border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)]'}`}>
+                <button onClick={() => onDelete(m.id)} className="absolute top-6 right-6 text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all z-20"><Trash2 size={16}/></button>
+                
+                <div className="flex items-center justify-between mb-2 pr-6">
+                  <h3 className={`font-bold tracking-tight text-lg ${needsMaintenance ? 'text-red-900' : 'text-zinc-900'}`}>{m.name}</h3>
+                  {isPaidOff && !needsMaintenance && <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md">Paid Off</span>}
+                  {needsMaintenance && <span className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md animate-pulse">Service Req</span>}
+                </div>
+                <div className={`text-xs font-medium mb-6 border-b pb-4 ${needsMaintenance ? 'text-red-700/70 border-red-200/60' : 'text-zinc-400 border-zinc-100'}`}>Acquired: {m.date} for {formatCurrency(m.cost)}</div>
+                
+                <div className="mb-6">
+                  <div className={`flex justify-between text-[10px] font-bold uppercase tracking-widest mb-2 ${needsMaintenance ? 'text-red-800/60' : 'text-zinc-500'}`}>
+                    <span>Assigned Profit</span>
+                    <span className={isPaidOff ? 'text-emerald-500' : (needsMaintenance ? 'text-red-700' : 'text-zinc-700')}>{formatCurrency(profitPerMachine)}</span>
+                  </div>
+                  <div className="w-full bg-zinc-100 rounded-full h-1.5 overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-1000 ease-out ${isPaidOff ? 'bg-emerald-400' : 'bg-zinc-900'}`} style={{ width: `${percentPaid}%` }}></div>
+                  </div>
+                  <div className="flex justify-between mt-2">
+                    <span className={`text-xs font-semibold ${needsMaintenance ? 'text-red-700/60' : 'text-zinc-400'}`}>{percentPaid.toFixed(0)}% ROI</span>
+                    {isPaidOff && <span className="text-xs font-bold text-emerald-600 tracking-tight">Paid for {roiRatio.toFixed(1)}x over</span>}
+                  </div>
+                </div>
+
+                <div className={`mt-auto rounded-xl p-4 flex flex-col border ${needsMaintenance ? 'bg-red-50 border-red-200/60' : 'bg-zinc-50 border-zinc-100/80'}`}>
+                  <div className="flex justify-between items-center mb-3">
+                    <div className={`flex items-center ${needsMaintenance ? 'text-red-800' : 'text-zinc-500'}`}>
+                      <Settings size={14} className={`mr-2 ${needsMaintenance ? 'animate-[spin_4s_linear_infinite]' : ''}`} />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">Maint. Odometer</span>
+                    </div>
+                    <span className={`text-sm font-bold tracking-tight ${needsMaintenance ? 'text-red-700' : 'text-zinc-800'}`}>{hoursSinceMaintenance.toFixed(1)} / 300h</span>
+                  </div>
+                  
+                  <div className="w-full bg-zinc-200/80 rounded-full h-1.5 overflow-hidden mb-3">
+                    <div className={`h-full rounded-full transition-all duration-500 ${needsMaintenance ? 'bg-red-500' : (maintPercent > 80 ? 'bg-amber-400' : 'bg-blue-500')}`} style={{ width: `${Math.min(100, maintPercent)}%` }}></div>
+                  </div>
+
+                  {needsMaintenance && (
+                    <button onClick={() => handleResetMaintenance(m)} className="w-full mt-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold uppercase tracking-widest py-2.5 rounded-lg transition-colors shadow-sm">
+                      Log Service & Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="bg-zinc-50/50 rounded-3xl border border-dashed border-zinc-200 p-8 flex flex-col justify-center transition-all hover:bg-zinc-50 hover:border-solid max-w-md mt-6">
+        <h3 className="font-bold text-zinc-700 tracking-tight mb-4 flex items-center"><Plus size={16} className="mr-2"/> Register Asset</h3>
+        <form onSubmit={addRow} className="space-y-3">
+          <input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+          <input type="text" placeholder="Asset Name (e.g. Bambu P1S)" className={inlineInputStyle} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
+          <input type="number" step="0.01" placeholder="Purchase Cost ($)" className={inlineInputStyle} value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} required />
+          <button type="submit" className="w-full bg-zinc-800 hover:bg-zinc-900 text-white font-semibold py-2 px-4 rounded-lg transition-all mt-2 text-sm shadow-sm">Save Hardware</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function ProgressCard({ drawsRecoup, initialGoal, remainingToRecoup, formatCurrency, onUpdateGoal }) {
   const [isEditing, setIsEditing] = useState(false);
   const [tempGoal, setTempGoal] = useState(initialGoal);
@@ -1042,7 +1182,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
   const [importPreview, setImportPreview] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const [showFees, setShowFees] = useState(false); // Option 5: Progressive Disclosure
+  const [showFees, setShowFees] = useState(false);
   const fileInputRef = useRef(null);
 
   const enrichedRevenues = useMemo(() => revenues.map(r => {
@@ -1153,7 +1293,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
           <input type="text" placeholder="Description" className={`${inlineInputStyle} col-span-1 sm:col-span-1`} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
           <input type="number" step="0.01" placeholder="Gross ($)" className={inlineInputStyle} value={formData.gross} onChange={e => setFormData({...formData, gross: e.target.value})} required />
           
-          {/* Progressive Disclosure (UX Option 5) */}
           {!showFees ? (
             <div className="md:col-span-3 flex items-center">
               <button type="button" onClick={() => setShowFees(true)} className="w-full py-2 border border-dashed border-zinc-200 rounded-lg text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all flex justify-center items-center">
