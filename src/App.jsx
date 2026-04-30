@@ -98,10 +98,10 @@ const useSortableData = (items, defaultKey = 'date') => {
 const SortableHeader = ({ label, sortKey, currentSort, requestSort, alignRight, textColor }) => {
   const isActive = currentSort?.key === sortKey;
   return (
-    <th className={`p-4 font-medium cursor-pointer hover:bg-slate-100 transition-colors group select-none ${textColor || 'text-slate-500'}`} onClick={() => requestSort(sortKey)}>
+    <th className={`px-6 py-4 font-semibold text-[11px] uppercase tracking-widest cursor-pointer hover:bg-zinc-50 transition-colors group select-none ${textColor || 'text-zinc-400'}`} onClick={() => requestSort(sortKey)}>
       <div className={`flex items-center space-x-1 ${alignRight ? 'justify-end' : ''}`}>
         <span>{label}</span>
-        <span className={`${isActive ? 'text-blue-500' : 'text-slate-300 opacity-0 group-hover:opacity-100'}`}>
+        <span className={`${isActive ? 'text-zinc-900' : 'text-zinc-300 opacity-0 group-hover:opacity-100'}`}>
           {isActive ? (currentSort.direction === 'ascending' ? <ChevronUp size={14} /> : <ChevronDown size={14} />) : <ArrowUpDown size={14} />}
         </span>
       </div>
@@ -161,7 +161,6 @@ export default function App() {
         const data = docSnap.data();
         setCogs(prev => ({ 
           ...prev, ...data,
-          // Legacy mapping just in case old cogs variables exist
           blackSpoolCost: data.blackSpoolCost ?? data.spoolCost ?? 20.00,
           blackGramsUsed: data.blackGramsUsed ?? (data.gramsUsed === 250 ? 533 : data.gramsUsed) ?? 533,
           whiteSpoolCost: data.whiteSpoolCost ?? 20.00,
@@ -285,7 +284,6 @@ export default function App() {
   }, [restocks]);
 
   const currentStock = useMemo(() => ({
-    // Note: Legacy "PETG (grams)" gets automatically added into Black PETG to save their old data
     blackPetg: ((restockTotals['Black PETG (grams)'] || 0) + (restockTotals['PETG (grams)'] || 0)) - (inventoryUnitsSold * (cogs.blackGramsUsed || 533)),
     whitePetg: (restockTotals['White PETG (grams)'] || 0) - (inventoryUnitsSold * (cogs.whiteGramsUsed || 11)),
     concrete: (restockTotals['Concrete (lbs)'] || 0) - (inventoryUnitsSold * (cogs.lbsUsed || 5)),
@@ -303,7 +301,6 @@ export default function App() {
     Math.max(0, currentStock.boxes), Math.max(0, currentStock.wrap), Math.max(0, currentStock.screws), Math.max(0, currentStock.inserts), Math.max(0, currentStock.washers)
   )), [currentStock, cogs]);
 
-  // Predict exact runout days per material
   const runoutDays = useMemo(() => ({
     blackPetg: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.blackPetg / (cogs.blackGramsUsed || 1)) / dailySalesVelocity)) : Infinity,
     whitePetg: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.whitePetg / (cogs.whiteGramsUsed || 1)) / dailySalesVelocity)) : Infinity,
@@ -315,7 +312,6 @@ export default function App() {
     washers: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.washers / dailySalesVelocity)) : Infinity,
   }), [dailySalesVelocity, currentStock, cogs]);
 
-  // Aggregate alerts for the Dashboard banner
   const lowStockAlerts = useMemo(() => {
     if (dailySalesVelocity === 0) return [];
     const alerts = [];
@@ -333,108 +329,110 @@ export default function App() {
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   
   const TabButton = ({ id, icon: Icon, label }) => (
-    <button onClick={() => setActiveTab(id)} className={`flex items-center space-x-2 px-4 py-3 text-sm font-medium transition-colors w-full sm:w-auto ${activeTab === id ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}>
-      <Icon size={18} /><span>{label}</span>
+    <button onClick={() => setActiveTab(id)} className={`flex items-center space-x-2 px-5 py-4 text-sm font-semibold transition-all duration-300 border-b-2 whitespace-nowrap ${activeTab === id ? 'border-zinc-900 text-zinc-900' : 'border-transparent text-zinc-400 hover:text-zinc-700 hover:border-zinc-300'}`}>
+      <Icon size={18} strokeWidth={activeTab === id ? 2.5 : 2} /><span>{label}</span>
     </button>
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans print-bg-white">
+    <div className="min-h-screen bg-[#f8fafc] text-zinc-900 font-sans antialiased print-bg-white selection:bg-zinc-200">
       
-      {/* QUICK ACTION MODALS */}
       {quickAction === 'revenue' && <QuickRevenueModal onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('revenues', d); setQuickAction(null); }} />}
       {quickAction === 'expense' && <QuickExpenseModal uploadReceipt={uploadReceipt} onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('expenses', d); setQuickAction(null); }} />}
       {quickAction === 'equity' && <QuickEquityModal onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('equities', d); setQuickAction(null); }} />}
 
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm no-print">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="py-4 flex justify-between items-center">
+      <header className="bg-white/80 backdrop-blur-xl border-b border-zinc-200/60 sticky top-0 z-30 no-print transition-all">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+          <div className="flex justify-between items-end mb-4">
             <div>
-              <h1 className="text-2xl font-bold text-slate-800">Apex Performance Concepts LLC</h1>
-              <p className="text-sm text-slate-500">Automated Business Ledger</p>
+              <h1 className="text-2xl font-bold tracking-tight text-zinc-900">APEX Performance</h1>
+              <p className="text-[13px] font-medium tracking-widest uppercase text-zinc-400 mt-1">Enterprise Ledger</p>
             </div>
           </div>
-          <div className="flex overflow-x-auto hide-scrollbar border-t border-slate-100">
-            <TabButton id="dashboard" icon={LayoutDashboard} label="Dashboard" />
-            <TabButton id="analytics" icon={MapIcon} label="Analytics & Maps" />
-            <TabButton id="revenue" icon={DollarSign} label="Revenue Log" />
+          <div className="flex overflow-x-auto hide-scrollbar gap-2">
+            <TabButton id="dashboard" icon={LayoutDashboard} label="Command Center" />
+            <TabButton id="analytics" icon={MapIcon} label="Analytics" />
+            <TabButton id="revenue" icon={DollarSign} label="Revenue" />
             <TabButton id="warehouse" icon={Package} label="Warehouse" />
-            <TabButton id="expenses" icon={Receipt} label="Expense Vault" />
-            <TabButton id="equity" icon={Wallet} label="Payouts" />
-            <TabButton id="mileage" icon={Car} label="Mileage Log" />
-            <TabButton id="cogs" icon={Settings} label="Mfg. Settings" />
-            <TabButton id="tax" icon={ClipboardList} label="Tax Summary" />
+            <TabButton id="expenses" icon={Receipt} label="Vault" />
+            <TabButton id="equity" icon={Wallet} label="Equity" />
+            <TabButton id="mileage" icon={Car} label="Mileage" />
+            <TabButton id="cogs" icon={Settings} label="Manufacturing" />
+            <TabButton id="tax" icon={ClipboardList} label="Tax Prep" />
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print-no-padding">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 print-no-padding">
         {activeTab === 'dashboard' && (
-          <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="space-y-8 animate-in fade-in duration-500 slide-in-from-bottom-4">
             
-            {/* SUPPLY CHAIN ALERT BANNER */}
             {lowStockAlerts.length > 0 && (
-              <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-2 rounded-r-xl shadow-sm flex items-start animate-in slide-in-from-top-2">
-                <AlertTriangle className="text-amber-500 mr-3 mt-0.5 flex-shrink-0" size={20} />
+              <div className="bg-white/80 backdrop-blur-md border border-amber-200/60 p-5 rounded-3xl shadow-[0_8px_30px_rgb(245,158,11,0.1)] flex items-start">
+                <div className="bg-amber-100 p-2 rounded-full mr-4"><AlertTriangle className="text-amber-600 flex-shrink-0" size={20} /></div>
                 <div>
-                  <h3 className="text-amber-800 font-bold text-sm">Supply Chain Alert</h3>
-                  <p className="text-amber-700 text-sm mt-1">Based on your recent sales velocity ({dailySalesVelocity.toFixed(1)} units/day), you will run out of:</p>
-                  <ul className="text-amber-700 text-sm mt-1 list-disc list-inside font-medium">
+                  <h3 className="text-amber-900 font-bold text-sm tracking-wide">SUPPLY CHAIN ALERT</h3>
+                  <p className="text-amber-700/80 text-sm mt-1 font-medium">Based on recent sales velocity ({dailySalesVelocity.toFixed(1)} units/day), you will run out of:</p>
+                  <ul className="text-amber-800 text-sm mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 font-medium">
                     {lowStockAlerts.map((alert, i) => (
-                      <li key={i}>{alert.name} <span className="font-normal opacity-80">(in {alert.days} days)</span></li>
+                      <li key={i} className="bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100/50">{alert.name} <span className="opacity-60 text-xs ml-1">in {alert.days}d</span></li>
                     ))}
                   </ul>
                 </div>
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-              <h2 className="text-xl font-semibold text-slate-800">Command Center</h2>
-              <div className="flex space-x-3">
-                <button onClick={() => setQuickAction('revenue')} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors shadow-sm"><Plus size={16} className="mr-1.5"/> Log Sale</button>
-                <button onClick={() => setQuickAction('expense')} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors shadow-sm"><Receipt size={16} className="mr-1.5"/> Expense</button>
-                <button onClick={() => setQuickAction('equity')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors shadow-sm"><ArrowRightLeft size={16} className="mr-1.5"/> Transfer</button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <h2 className="text-2xl font-bold tracking-tight text-zinc-900">Overview</h2>
+              <div className="flex space-x-2">
+                <button onClick={() => setQuickAction('revenue')} className="bg-zinc-900 hover:bg-zinc-800 text-white px-5 py-2.5 rounded-full text-sm font-semibold flex items-center transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5"><Plus size={16} className="mr-1.5"/> Log Sale</button>
+                <button onClick={() => setQuickAction('expense')} className="bg-white border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 text-zinc-800 px-5 py-2.5 rounded-full text-sm font-semibold flex items-center transition-all shadow-sm hover:-translate-y-0.5"><Receipt size={16} className="mr-1.5 text-zinc-400"/> Expense</button>
+                <button onClick={() => setQuickAction('equity')} className="bg-white border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 text-zinc-800 px-5 py-2.5 rounded-full text-sm font-semibold flex items-center transition-all shadow-sm hover:-translate-y-0.5"><ArrowRightLeft size={16} className="mr-1.5 text-zinc-400"/> Transfer</button>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <DashboardCard title="Total Revenue (Gross)" amount={totalGrossRevenue} subtitle="Total sales before fees" color="blue" />
-              <DashboardCard title="Total Platform Fees" amount={totalPlatformFees} subtitle="eBay, Ads, & Shipping" color="red" isNegative />
-              <DashboardCard title="Operating Expenses" amount={totalOperatingExpenses} subtitle="Printers, tools, gear" color="orange" isNegative />
-              <div className="col-span-1 md:col-span-2 lg:col-span-3 border-t border-slate-200 my-2"></div>
-              <DashboardCard title="Net Profit" amount={netProfit} subtitle="The actual 'Apex' earnings" color={netProfit >= 0 ? "emerald" : "red"} highlight />
-              <DashboardCard title="Tax Reserve (25%)" amount={taxReserve} subtitle="Set aside for IRS & Iowa" color="indigo" />
-              <DashboardCard title="Amex Checking Balance" amount={estimatedCashBalance} subtitle="Transfers in minus expenses out (since Apr 29)" color="blue" highlight />
+              <DashboardCard title="Total Revenue" amount={totalGrossRevenue} subtitle="Gross lifetime sales" color="zinc" />
+              <DashboardCard title="Platform Fees" amount={totalPlatformFees} subtitle="eBay, Ads, & Shipping" color="zinc" isNegative />
+              <DashboardCard title="Operating Expenses" amount={totalOperatingExpenses} subtitle="Printers, tools, gear" color="zinc" isNegative />
               
-              <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col justify-center">
-                <h3 className="text-sm font-medium text-slate-500 flex items-center"><Target size={16} className="mr-1.5"/> Mfg. Efficiency</h3>
-                <div className="text-3xl font-bold mt-2 text-emerald-600">{formatCurrency(avgProfitPerUnit)}</div>
-                <p className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-wider">Avg True Profit Per Unit</p>
-                <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between text-sm">
-                  <span className="text-slate-500">Total Units Sold:</span>
-                  <span className="font-bold text-slate-700">{totalUnitsSold}</span>
+              <div className="col-span-1 md:col-span-2 lg:col-span-3 h-px bg-zinc-200/60 my-2"></div>
+              
+              <DashboardCard title="Net Profit" amount={netProfit} subtitle="True enterprise earnings" color={netProfit >= 0 ? "emerald" : "zinc"} highlight />
+              <DashboardCard title="Tax Reserve (25%)" amount={taxReserve} subtitle="Set aside for IRS & Iowa" color="zinc" />
+              <DashboardCard title="Amex Checking" amount={estimatedCashBalance} subtitle="Cash balance (since Apr 29)" color="blue" highlight />
+              
+              <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] group">
+                <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center"><Target size={14} className="mr-2"/> Mfg. Efficiency</h3>
+                <div className="text-4xl font-semibold tracking-tighter mt-3 text-emerald-600">{formatCurrency(avgProfitPerUnit)}</div>
+                <p className="text-sm font-medium text-zinc-400 mt-2">Avg true profit per unit</p>
+                <div className="mt-4 pt-4 border-t border-zinc-100 flex justify-between items-center">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Total Units</span>
+                  <span className="font-bold text-zinc-900 bg-zinc-100 px-3 py-1 rounded-full text-xs">{totalUnitsSold}</span>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col justify-center">
-                <h3 className="text-sm font-medium text-slate-500 flex items-center"><ShieldCheck size={16} className="mr-1.5"/> The Tax Shield</h3>
-                <div className="text-3xl font-bold mt-2 text-blue-600">{formatCurrency(taxShield)}</div>
-                <p className="text-xs text-slate-400 mt-2 leading-tight">Total cash value of legal deductions (Expenses + Mileage)</p>
+              <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+                <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center"><ShieldCheck size={14} className="mr-2"/> The Tax Shield</h3>
+                <div className="text-4xl font-semibold tracking-tighter mt-3 text-blue-600">{formatCurrency(taxShield)}</div>
+                <p className="text-sm font-medium text-zinc-400 mt-2 leading-tight">Total cash value of legal deductions (Expenses + Mileage)</p>
               </div>
 
-              <div className={`rounded-xl border p-6 shadow-sm flex flex-col items-center justify-center text-center transition-colors ${drawsGolf > 0 || isGolfUnlocked ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-                <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">My Golf Fund</h3>
-                <div className={`text-4xl font-extrabold ${drawsGolf > 0 || isGolfUnlocked ? 'text-emerald-600' : 'text-slate-400'}`}>
-                  {formatCurrency(drawsGolf)}
-                  <span className="block text-xs text-slate-500 font-normal mt-1 tracking-normal normal-case">Total Accounted For / Withdrawn</span>
+              <div className={`rounded-3xl border p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all ${drawsGolf > 0 || isGolfUnlocked ? 'bg-[#f0fdf4] border-emerald-100' : 'bg-zinc-50 border-zinc-200/60'}`}>
+                <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2 flex items-center justify-center">Golf Fund</h3>
+                <div className="text-center">
+                  <div className={`text-4xl font-semibold tracking-tighter mt-1 ${drawsGolf > 0 || isGolfUnlocked ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                    {formatCurrency(drawsGolf)}
+                  </div>
+                  <span className="block text-xs font-medium text-zinc-400 mt-2">Total Accounted For / Withdrawn</span>
                 </div>
-                <div className="w-full mt-4 border-t border-slate-200/50 pt-3">
+                <div className={`w-full mt-5 border-t pt-4 ${isGolfUnlocked ? 'border-emerald-200/60' : 'border-zinc-200'}`}>
                 {!isGolfUnlocked ? (
-                  <p className="text-sm text-slate-500">Generate <span className="font-medium text-slate-600">{formatCurrency(Math.max(0, initialGoal - safeCash))}</span> more safe profit to unlock</p>
+                  <p className="text-xs font-medium text-zinc-500 text-center">Generate <span className="font-bold text-zinc-800">{formatCurrency(Math.max(0, initialGoal - safeCash))}</span> more safe profit to unlock</p>
                 ) : (
-                  <div className="flex justify-between items-center w-full text-sm">
-                    <span className="text-slate-600">Available to Withdraw:</span>
-                    <span className="font-medium text-emerald-700">{formatCurrency(availableGolfFund)}</span>
+                  <div className="flex justify-between items-center w-full">
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-800/60">Available:</span>
+                    <span className="font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full text-xs">{formatCurrency(availableGolfFund)}</span>
                   </div>
                 )}
                 </div>
@@ -461,36 +459,37 @@ export default function App() {
   );
 }
 
-// --- SUB-COMPONENTS & MODALS ---
-const inlineInputStyle = "w-full border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500 bg-white";
-const modalInputStyle = "w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors";
+// --- UI COMPONENTS ---
+
+const modalInputStyle = "w-full border border-zinc-200 bg-zinc-50/50 rounded-2xl px-4 py-3 text-sm font-medium transition-all focus:bg-white focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 outline-none";
+const inlineInputStyle = "w-full border border-zinc-200 rounded-lg px-3 py-1.5 text-sm font-medium transition-all focus:border-zinc-900 outline-none";
 
 function QuickRevenueModal({ onClose, onAdd }) {
   const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', ebay: '', ad: '', shipping: '', state: '' });
   const handleSubmit = (e) => { e.preventDefault(); if(formData.gross) onAdd(formData); };
   return (
-    <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center"><DollarSign size={20} className="mr-2 text-blue-600"/> Quick Log Sale</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+    <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-zinc-200/50">
+        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+          <h2 className="text-lg font-bold tracking-tight text-zinc-900 flex items-center">Log New Sale</h2>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full"><X size={18}/></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
-            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Buyer State (e.g. AZ)</label><input type="text" maxLength="2" className={modalInputStyle} placeholder="Optional" value={formData.state} onChange={e=>setFormData({...formData, state:e.target.value.toUpperCase()})}/></div>
+            <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
+            <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">State (e.g. AZ)</label><input type="text" maxLength="2" className={modalInputStyle} placeholder="Optional" value={formData.state} onChange={e=>setFormData({...formData, state:e.target.value.toUpperCase()})}/></div>
           </div>
           <div className="grid grid-cols-4 gap-4">
-            <div className="col-span-3"><label className="block text-xs font-semibold text-slate-500 mb-1">Item Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
-            <div className="col-span-1"><label className="block text-xs font-semibold text-slate-500 mb-1">Qty</label><input type="number" min="1" className={modalInputStyle} value={formData.qty} onChange={e=>setFormData({...formData, qty:e.target.value})} required/></div>
+            <div className="col-span-3"><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
+            <div className="col-span-1"><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Qty</label><input type="number" min="1" className={modalInputStyle} value={formData.qty} onChange={e=>setFormData({...formData, qty:e.target.value})} required/></div>
           </div>
-          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Gross Sale ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.gross} onChange={e=>setFormData({...formData, gross:e.target.value})} required/></div>
-          <div className="grid grid-cols-3 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
-            <div><label className="block text-xs font-semibold text-slate-500 mb-1">eBay Fee</label><input type="number" step="0.01" className={modalInputStyle} value={formData.ebay} onChange={e=>setFormData({...formData, ebay:e.target.value})}/></div>
-            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Ad Fee</label><input type="number" step="0.01" className={modalInputStyle} value={formData.ad} onChange={e=>setFormData({...formData, ad:e.target.value})}/></div>
-            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Label Cost</label><input type="number" step="0.01" className={modalInputStyle} value={formData.shipping} onChange={e=>setFormData({...formData, shipping:e.target.value})}/></div>
+          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Gross Sale ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.gross} onChange={e=>setFormData({...formData, gross:e.target.value})} required/></div>
+          <div className="grid grid-cols-3 gap-3 p-5 bg-zinc-50 rounded-2xl border border-zinc-100/80">
+            <div><label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">eBay Fee</label><input type="number" step="0.01" className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm font-medium outline-none focus:border-zinc-900" value={formData.ebay} onChange={e=>setFormData({...formData, ebay:e.target.value})}/></div>
+            <div><label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Ad Fee</label><input type="number" step="0.01" className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm font-medium outline-none focus:border-zinc-900" value={formData.ad} onChange={e=>setFormData({...formData, ad:e.target.value})}/></div>
+            <div><label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Label Cost</label><input type="number" step="0.01" className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm font-medium outline-none focus:border-zinc-900" value={formData.shipping} onChange={e=>setFormData({...formData, shipping:e.target.value})}/></div>
           </div>
-          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl mt-2 transition-colors">Save Sale</button>
+          <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all hover:shadow-lg hover:-translate-y-0.5">Save Record</button>
         </form>
       </div>
     </div>
@@ -514,24 +513,24 @@ function QuickExpenseModal({ onClose, onAdd, uploadReceipt }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center"><Receipt size={20} className="mr-2 text-orange-500"/> Quick Log Expense</h2>
-          <button onClick={onClose} disabled={isUploading} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+    <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-zinc-200/50">
+        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+          <h2 className="text-lg font-bold tracking-tight text-zinc-900">Log Expense</h2>
+          <button onClick={onClose} disabled={isUploading} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full"><X size={18}/></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
-          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
+          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
           <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
+            <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+            <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Attach Receipt (Optional)</label>
-            <input type="file" accept="image/*,application/pdf" onChange={e=>setFile(e.target.files[0])} className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 transition-colors" />
+          <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl">
+            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Attach Vault Receipt</label>
+            <input type="file" accept="image/*,application/pdf" onChange={e=>setFile(e.target.files[0])} className="w-full text-sm font-medium text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:uppercase file:tracking-wider file:bg-zinc-200 file:text-zinc-700 hover:file:bg-zinc-300 transition-colors cursor-pointer" />
           </div>
-          <button type="submit" disabled={isUploading} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-xl mt-2 transition-colors flex justify-center items-center">
+          <button type="submit" disabled={isUploading} className="w-full bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-400 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all hover:shadow-lg hover:-translate-y-0.5 flex justify-center items-center">
             {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Vault...</> : "Save Expense"}
           </button>
         </form>
@@ -545,18 +544,18 @@ function QuickEquityModal({ onClose, onAdd }) {
   const categories = ['Recoup Investment', 'Golf Fund', 'Amex Transfer (Op Cash)', 'Other Draw'];
   const handleSubmit = (e) => { e.preventDefault(); if(formData.amount) onAdd(formData); };
   return (
-    <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center"><ArrowRightLeft size={20} className="mr-2 text-indigo-600"/> Quick Transfer</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+    <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-zinc-200/50">
+        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+          <h2 className="text-lg font-bold tracking-tight text-zinc-900">Transfer Funds</h2>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full"><X size={18}/></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
-          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
-          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
-          <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl mt-2 transition-colors">Log Transfer</button>
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
+          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
+          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
+          <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all hover:shadow-lg hover:-translate-y-0.5">Log Transfer</button>
         </form>
       </div>
     </div>
@@ -606,7 +605,7 @@ function Analytics({ revenues, expenses, formatCurrency }) {
     return Object.keys(totals).map(cat => {
       const pct = grandTotal > 0 ? (totals[cat] / grandTotal) * 100 : 0;
       const offset = currentOffset; currentOffset += pct;
-      return { category: cat, amount: totals[cat], pct, offset, color: colors[cat] || '#94a3b8' };
+      return { category: cat, amount: totals[cat], pct, offset, color: colors[cat] || '#e2e8f0' };
     }).sort((a, b) => b.amount - a.amount);
   }, [expenses]);
 
@@ -638,33 +637,33 @@ function Analytics({ revenues, expenses, formatCurrency }) {
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="font-semibold text-slate-700 flex items-center"><MapIcon size={18} className="mr-2 text-slate-400"/> Customer Geospatial Tile Map</h3>
-          <div className="text-xs font-medium text-slate-400 bg-slate-100 px-3 py-1 rounded-full">Hover tiles to view volume</div>
+      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow">
+        <div className="flex items-center justify-between mb-8">
+          <h3 className="font-bold text-zinc-900 tracking-tight text-lg flex items-center">Customer Geospatial Tile Map</h3>
+          <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest bg-zinc-50 border border-zinc-100 px-3 py-1.5 rounded-full">Hover to inspect</div>
         </div>
         
-        <div className="flex flex-col lg:flex-row gap-8">
-          <div className="flex-1 bg-slate-50 rounded-xl p-4 border border-slate-100 flex items-center justify-center">
-            <div className="grid gap-1 sm:gap-1.5 w-full max-w-2xl" style={{ gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' }}>
+        <div className="flex flex-col lg:flex-row gap-10">
+          <div className="flex-1 bg-[#fbfbfd] rounded-2xl p-6 border border-zinc-100 flex items-center justify-center">
+            <div className="grid gap-1 sm:gap-2 w-full max-w-2xl" style={{ gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' }}>
               {grid.flat().map((cell, i) => {
                 if (!cell) return <div key={i} className="aspect-square" />;
                 const rev = stateData[cell] || 0;
                 const intensity = maxStateRevenue > 0 ? rev / maxStateRevenue : 0;
-                const bgColor = rev > 0 ? `rgba(37, 99, 235, ${Math.max(0.15, intensity)})` : '#ffffff';
-                const textColor = intensity > 0.4 ? '#ffffff' : '#475569';
-                const borderColor = rev > 0 ? 'border-transparent' : 'border-slate-200';
+                const bgColor = rev > 0 ? `rgba(9, 9, 11, ${Math.max(0.1, intensity)})` : '#ffffff'; // Using deep zinc for heatmap
+                const textColor = intensity > 0.4 ? '#ffffff' : '#71717a';
+                const borderColor = rev > 0 ? 'border-transparent' : 'border-zinc-200';
                 
                 return (
                   <div 
                     key={i}
-                    className={`aspect-square border ${borderColor} rounded md:rounded-md flex items-center justify-center text-[10px] sm:text-xs font-bold cursor-pointer hover:ring-2 hover:ring-blue-400 hover:scale-110 hover:z-10 transition-all shadow-sm relative group`}
+                    className={`aspect-square border ${borderColor} rounded-md flex items-center justify-center text-[10px] sm:text-[11px] font-bold cursor-pointer hover:ring-2 hover:ring-blue-500 hover:scale-[1.15] hover:z-10 transition-all shadow-sm relative group`}
                     style={{ backgroundColor: bgColor, color: textColor }}
                   >
                     {cell}
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-slate-900 text-white p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none">
-                      <div className="font-bold text-xs">{cell}</div>
-                      <div className="text-emerald-400 font-bold">{formatCurrency(rev)}</div>
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 bg-zinc-900 text-white px-4 py-2.5 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none">
+                      <div className="font-bold text-[11px] uppercase tracking-widest text-zinc-400 mb-0.5">{cell}</div>
+                      <div className="text-white font-semibold">{formatCurrency(rev)}</div>
                     </div>
                   </div>
                 )
@@ -672,17 +671,17 @@ function Analytics({ revenues, expenses, formatCurrency }) {
             </div>
           </div>
           <div className="w-full lg:w-64 flex flex-col space-y-4">
-            <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200 pb-2">Top Markets</h4>
+            <h4 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-100 pb-3">Top Markets</h4>
             {topStates.length === 0 ? (
-              <div className="text-sm text-slate-400">No states logged yet. Use Quick Action to log a sale!</div>
+              <div className="text-sm font-medium text-zinc-400 mt-2">No states logged yet.</div>
             ) : (
               topStates.map((state, idx) => (
-                <div key={state.code} className="flex items-center justify-between">
+                <div key={state.code} className="flex items-center justify-between group">
                   <div className="flex items-center space-x-3">
-                    <span className="text-slate-400 font-bold text-sm">#{idx + 1}</span>
-                    <span className="font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-sm">{state.code}</span>
+                    <span className="text-zinc-300 font-bold text-xs w-4">{idx + 1}</span>
+                    <span className="font-bold text-zinc-700 text-sm">{state.code}</span>
                   </div>
-                  <span className="font-bold text-emerald-600 text-sm">{formatCurrency(state.rev)}</span>
+                  <span className="font-semibold text-zinc-900 text-sm group-hover:text-blue-600 transition-colors">{formatCurrency(state.rev)}</span>
                 </div>
               ))
             )}
@@ -691,16 +690,16 @@ function Analytics({ revenues, expenses, formatCurrency }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-semibold text-slate-700 flex items-center"><BarChart3 size={18} className="mr-2 text-slate-400"/> Cash Flow by Month</h3>
-            <div className="flex items-center space-x-4 text-xs">
-              <div className="flex items-center"><span className="w-3 h-3 rounded-sm bg-blue-500 mr-1.5"></span> Revenue</div>
-              <div className="flex items-center"><span className="w-3 h-3 rounded-sm bg-orange-400 mr-1.5"></span> Expenses</div>
+        <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow flex flex-col">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="font-bold text-zinc-900 tracking-tight text-lg">Cash Flow</h3>
+            <div className="flex items-center space-x-4 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+              <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-zinc-900 mr-2"></span> Rev</div>
+              <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-zinc-300 mr-2"></span> Exp</div>
             </div>
           </div>
-          <div className="flex-1 min-h-[250px] flex items-end space-x-2 sm:space-x-6 pb-6 border-b border-slate-100 overflow-x-auto hide-scrollbar pt-6">
-            {monthlyData.length === 0 ? <div className="w-full text-center text-slate-400 text-sm pb-10">No data to display yet.</div> : (
+          <div className="flex-1 min-h-[250px] flex items-end space-x-2 sm:space-x-6 pb-6 border-b border-zinc-100 overflow-x-auto hide-scrollbar pt-6">
+            {monthlyData.length === 0 ? <div className="w-full text-center text-zinc-400 text-sm font-medium pb-10">No data to display yet.</div> : (
               monthlyData.map((data) => {
                 const [year, month] = data.month.split('-');
                 const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'short' });
@@ -709,39 +708,38 @@ function Analytics({ revenues, expenses, formatCurrency }) {
                 return (
                   <div key={data.month} className="flex flex-col items-center flex-1 min-w-[50px] group">
                     <div className="flex items-end justify-center space-x-1 w-full h-48 relative">
-                      <div className="w-1/2 bg-blue-500 rounded-t-sm transition-all duration-500 relative" style={{ height: `${revHeight}%` }}>
-                        <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">Rev: {formatCurrency(data.rev)}</div>
+                      <div className="w-1/2 bg-zinc-900 rounded-t-sm transition-all duration-500 relative hover:bg-blue-600" style={{ height: `${revHeight}%` }}>
+                        <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-zinc-900 text-white text-xs font-semibold py-1.5 px-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none shadow-lg">{formatCurrency(data.rev)}</div>
                       </div>
-                      <div className="w-1/2 bg-orange-400 rounded-t-sm transition-all duration-500 relative" style={{ height: `${expHeight}%` }}>
-                        <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">Exp: {formatCurrency(data.exp)}</div>
+                      <div className="w-1/2 bg-zinc-300 rounded-t-sm transition-all duration-500 relative" style={{ height: `${expHeight}%` }}>
                       </div>
                     </div>
-                    <div className="mt-3 text-xs font-medium text-slate-500">{monthName} '{year.slice(2)}</div>
+                    <div className="mt-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">{monthName}</div>
                   </div>
                 );
               })
             )}
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col">
-          <h3 className="font-semibold text-slate-700 flex items-center mb-6"><PieChart size={18} className="mr-2 text-slate-400"/> Operating Expenses Breakdown</h3>
-          {categoryData.length === 0 ? <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">No expenses logged yet.</div> : (
-            <div className="flex flex-col sm:flex-row items-center justify-center flex-1 gap-8">
+        <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow flex flex-col">
+          <h3 className="font-bold text-zinc-900 tracking-tight text-lg mb-8">Expenses</h3>
+          {categoryData.length === 0 ? <div className="flex-1 flex items-center justify-center text-zinc-400 text-sm font-medium">No expenses logged yet.</div> : (
+            <div className="flex flex-col sm:flex-row items-center justify-center flex-1 gap-10">
               <div className="relative w-48 h-48">
-                <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90 rounded-full">
+                <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90 rounded-full drop-shadow-sm">
                   {categoryData.map((slice) => <circle key={slice.category} r="12" cx="16" cy="16" fill="transparent" stroke={slice.color} strokeWidth="8" strokeDasharray={`${slice.pct > 0 ? slice.pct : 0} 100`} strokeDashoffset={`-${slice.offset}`} className="transition-all duration-1000 ease-out" />)}
-                  <circle r="8" cx="16" cy="16" fill="white" />
+                  <circle r="9" cx="16" cy="16" fill="white" />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-xs text-slate-400 uppercase tracking-widest font-bold">Total</span>
-                  <span className="text-lg font-bold text-slate-700">{formatCurrency(categoryData.reduce((s, c) => s + c.amount, 0))}</span>
+                  <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold mb-1">Total</span>
+                  <span className="text-lg font-bold text-zinc-900 tracking-tight">{formatCurrency(categoryData.reduce((s, c) => s + c.amount, 0))}</span>
                 </div>
               </div>
-              <div className="flex flex-col space-y-3 w-full sm:w-auto">
+              <div className="flex flex-col space-y-4 w-full sm:w-auto">
                 {categoryData.map(slice => (
-                  <div key={slice.category} className="flex items-center justify-between space-x-4">
-                    <div className="flex items-center"><span className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: slice.color }}></span><span className="text-sm text-slate-600">{slice.category}</span></div>
-                    <div className="flex items-center space-x-2"><span className="text-sm font-medium text-slate-800">{formatCurrency(slice.amount)}</span><span className="text-xs text-slate-400 w-8 text-right">{Math.round(slice.pct)}%</span></div>
+                  <div key={slice.category} className="flex items-center justify-between space-x-6">
+                    <div className="flex items-center"><span className="w-2 h-2 rounded-full mr-3" style={{ backgroundColor: slice.color }}></span><span className="text-sm font-medium text-zinc-600">{slice.category}</span></div>
+                    <div className="flex items-center space-x-3"><span className="text-sm font-semibold text-zinc-900">{formatCurrency(slice.amount)}</span><span className="text-xs font-bold text-zinc-400 w-8 text-right">{Math.round(slice.pct)}%</span></div>
                   </div>
                 ))}
               </div>
@@ -761,36 +759,36 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
   const addRow = (e) => { e.preventDefault(); if (!formData.qty) return; onAdd(formData); setFormData({ ...formData, qty: '' }); };
 
   const StockCard = ({ title, amount, unit, isWarning, daysRemaining, velocity }) => (
-    <div className={`rounded-xl border p-4 shadow-sm flex flex-col justify-center transition-colors ${isWarning ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-        {title} {isWarning && <AlertTriangle size={14} className="text-red-500" />}
+    <div className={`rounded-3xl border p-6 flex flex-col justify-center transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${isWarning ? 'bg-amber-50/50 border-amber-200/60' : 'bg-white border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]'}`}>
+      <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center justify-between">
+        {title} {isWarning && <AlertTriangle size={14} className="text-amber-500" />}
       </h3>
-      <div className={`text-2xl font-bold mt-2 ${isWarning ? 'text-red-600' : 'text-slate-800'}`}>{Number(amount).toLocaleString()} <span className="text-sm font-normal text-slate-500">{unit}</span></div>
+      <div className={`text-3xl font-semibold tracking-tighter mt-3 ${isWarning ? 'text-amber-700' : 'text-zinc-900'}`}>{Number(amount).toLocaleString()} <span className="text-sm font-medium tracking-normal text-zinc-400 ml-1">{unit}</span></div>
       {velocity > 0 && (
-        <div className={`text-xs mt-1.5 font-medium ${daysRemaining <= 7 ? 'text-red-500' : 'text-slate-400'}`}>
-          {daysRemaining > 0 && daysRemaining !== Infinity ? `Runs out in ~${daysRemaining} days` : (daysRemaining === 0 ? 'Out of stock' : 'Adequate supply')}
+        <div className={`text-[11px] mt-3 font-bold uppercase tracking-wider ${daysRemaining <= 7 ? 'text-amber-600' : 'text-zinc-400'}`}>
+          {daysRemaining > 0 && daysRemaining !== Infinity ? `~${daysRemaining} days remaining` : (daysRemaining === 0 ? 'Out of stock' : 'Adequate supply')}
         </div>
       )}
     </div>
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className={`bg-slate-800 rounded-xl border border-slate-700 p-8 shadow-md text-white flex flex-col sm:flex-row sm:items-center justify-between relative overflow-hidden ${buildableUnits < 10 ? 'bg-red-900 border-red-700' : ''}`}>
-        <div className="absolute top-0 right-0 p-8 opacity-10"><Package size={160} /></div>
+    <div className="space-y-8 animate-in fade-in">
+      <div className={`rounded-[2.5rem] p-10 flex flex-col sm:flex-row sm:items-center justify-between relative overflow-hidden transition-all duration-500 ${buildableUnits < 10 ? 'bg-amber-100 text-amber-900' : 'bg-zinc-900 text-white shadow-2xl shadow-zinc-900/20'}`}>
+        <div className="absolute top-0 right-0 p-8 opacity-5"><Package size={200} /></div>
         <div className="z-10">
-          <h2 className="text-lg font-medium text-slate-300">Current Production Capacity</h2>
-          <p className="text-sm text-slate-400 mt-1">Based on lowest raw material in stock</p>
+          <h2 className="text-2xl font-bold tracking-tight">Production Capacity</h2>
+          <p className={`text-sm font-medium mt-2 ${buildableUnits < 10 ? 'text-amber-700' : 'text-zinc-400'}`}>Limited by lowest raw material</p>
         </div>
-        <div className="z-10 mt-4 sm:mt-0 text-left sm:text-right">
-          <div className="text-6xl font-extrabold">{buildableUnits}</div>
-          <div className="text-sm font-bold uppercase tracking-widest text-emerald-400 mt-1">Trainers Buildable</div>
+        <div className="z-10 mt-6 sm:mt-0 text-left sm:text-right">
+          <div className="text-7xl font-semibold tracking-tighter">{buildableUnits.toLocaleString()}</div>
+          <div className={`text-[11px] font-bold uppercase tracking-widest mt-2 ${buildableUnits < 10 ? 'text-amber-700' : 'text-zinc-400'}`}>Buildable Units</div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        <StockCard title="Black PETG" amount={currentStock.blackPetg} unit="grams" isWarning={runoutDays.blackPetg <= 7} daysRemaining={runoutDays.blackPetg} velocity={dailySalesVelocity} />
-        <StockCard title="White PETG" amount={currentStock.whitePetg} unit="grams" isWarning={runoutDays.whitePetg <= 7} daysRemaining={runoutDays.whitePetg} velocity={dailySalesVelocity} />
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+        <StockCard title="Black PETG" amount={currentStock.blackPetg} unit="g" isWarning={runoutDays.blackPetg <= 7} daysRemaining={runoutDays.blackPetg} velocity={dailySalesVelocity} />
+        <StockCard title="White PETG" amount={currentStock.whitePetg} unit="g" isWarning={runoutDays.whitePetg <= 7} daysRemaining={runoutDays.whitePetg} velocity={dailySalesVelocity} />
         <StockCard title="Concrete" amount={currentStock.concrete} unit="lbs" isWarning={runoutDays.concrete <= 7} daysRemaining={runoutDays.concrete} velocity={dailySalesVelocity} />
         <StockCard title="Boxes" amount={currentStock.boxes} unit="qty" isWarning={runoutDays.boxes <= 7} daysRemaining={runoutDays.boxes} velocity={dailySalesVelocity} />
         <StockCard title="Bubble Wrap" amount={currentStock.wrap} unit="qty" isWarning={runoutDays.wrap <= 7} daysRemaining={runoutDays.wrap} velocity={dailySalesVelocity} />
@@ -799,33 +797,33 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
         <StockCard title="Washers" amount={currentStock.washers} unit="sets" isWarning={runoutDays.washers <= 7} daysRemaining={runoutDays.washers} velocity={dailySalesVelocity} />
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4 text-slate-800">Log Material Restock</h2>
+      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Material Restock</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <input type="date" className="input-field" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-          <select className="input-field sm:col-span-2" value={formData.material} onChange={e => setFormData({...formData, material: e.target.value})}>{materials.map(m => <option key={m} value={m}>{m}</option>)}</select>
-          <input type="number" placeholder="Quantity Added" className="input-field" value={formData.qty} onChange={e => setFormData({...formData, qty: e.target.value})} required />
-          <button type="submit" className="sm:col-span-4 bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Add to Warehouse</button>
+          <input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+          <select className={`${inlineInputStyle} sm:col-span-2`} value={formData.material} onChange={e => setFormData({...formData, material: e.target.value})}>{materials.map(m => <option key={m} value={m}>{m}</option>)}</select>
+          <input type="number" placeholder="Quantity Added" className={inlineInputStyle} value={formData.qty} onChange={e => setFormData({...formData, qty: e.target.value})} required />
+          <button type="submit" className="sm:col-span-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5"><Plus size={18} className="mr-2" /> Add to Warehouse</button>
         </form>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center"><h3 className="font-semibold text-slate-700">Restock History</h3></div>
+      <div className="bg-white rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
+        <div className="p-6 border-b border-zinc-100"><h3 className="font-bold tracking-tight text-zinc-900">Restock History</h3></div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-white border-b border-slate-200 text-slate-500">
+            <thead className="border-b border-zinc-100 bg-zinc-50/50">
               <tr>
                 <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Material" sortKey="material" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Quantity Added" sortKey="qty" currentSort={sortConfig} requestSort={requestSort} alignRight />
+                <SortableHeader label="Qty Added" sortKey="qty" currentSort={sortConfig} requestSort={requestSort} alignRight />
                 <th className="p-4"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {sortedRestocks.length === 0 ? <tr><td colSpan="4" className="p-4 text-center text-slate-400">No restocks logged yet. Try adding your starting inventory above!</td></tr> : sortedRestocks.map(r => (
-                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4">{r.date}</td><td className="p-4 font-medium text-slate-700">{r.material}</td><td className="p-4 text-right text-emerald-600 font-bold">+{Number(r.qty).toLocaleString()}</td>
-                    <td className="p-4 text-right"><button onClick={() => onDelete(r.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
+            <tbody className="divide-y divide-zinc-50">
+              {sortedRestocks.length === 0 ? <tr><td colSpan="4" className="p-8 text-center text-zinc-400 font-medium">No restocks logged yet.</td></tr> : sortedRestocks.map(r => (
+                  <tr key={r.id} className="hover:bg-zinc-50/50 transition-colors group">
+                    <td className="px-6 py-4 font-medium text-zinc-500">{r.date}</td><td className="px-6 py-4 font-semibold text-zinc-900">{r.material}</td><td className="px-6 py-4 text-right text-emerald-600 font-bold tracking-tight">+{Number(r.qty).toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right"><button onClick={() => onDelete(r.id)} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button></td>
                   </tr>
               ))}
             </tbody>
@@ -843,31 +841,31 @@ function ProgressCard({ drawsRecoup, initialGoal, remainingToRecoup, formatCurre
   const percentComplete = initialGoal > 0 ? Math.min(100, (drawsRecoup / initialGoal) * 100) : 100;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col items-center text-center relative group">
-      <div className="absolute top-4 right-4">
-        {!isEditing && <button onClick={() => setIsEditing(true)} className="text-slate-300 hover:text-blue-500 transition-colors p-1" title="Edit Initial Goal"><Edit2 size={16} /></button>}
+    <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center relative group hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all">
+      <div className="absolute top-6 right-6">
+        {!isEditing && <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-zinc-900 transition-colors p-1 opacity-0 group-hover:opacity-100" title="Edit Initial Goal"><Edit2 size={16} /></button>}
       </div>
-      <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">Remaining to Recoup</h3>
-      <div className="text-3xl font-bold text-slate-800 mb-1">{formatCurrency(remainingToRecoup)}</div>
-      <div className="w-full bg-slate-200 rounded-full h-2.5 mt-4"><div className="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style={{ width: `${percentComplete}%` }}></div></div>
+      <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Remaining to Recoup</h3>
+      <div className="text-4xl font-semibold tracking-tighter text-zinc-900 mb-2">{formatCurrency(remainingToRecoup)}</div>
+      <div className="w-full bg-zinc-100 rounded-full h-1.5 mt-5 overflow-hidden"><div className="bg-zinc-900 h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${percentComplete}%` }}></div></div>
       {isEditing ? (
-        <div className="flex items-center space-x-2 mt-3">
-          <span className="text-sm text-slate-500">Goal: $</span>
-          <input type="number" className="border border-slate-300 rounded px-2 py-1 w-24 text-sm outline-none focus:border-blue-500" value={tempGoal} onChange={(e) => setTempGoal(e.target.value)} />
-          <button onClick={handleSave} className="bg-blue-100 text-blue-600 p-1.5 rounded hover:bg-blue-200"><Check size={14} /></button>
+        <div className="flex items-center space-x-3 mt-5 bg-zinc-50 p-2 rounded-xl border border-zinc-200">
+          <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest ml-2">Goal $</span>
+          <input type="number" className="border-none bg-transparent w-24 text-sm font-semibold outline-none text-zinc-900" value={tempGoal} onChange={(e) => setTempGoal(e.target.value)} />
+          <button onClick={handleSave} className="bg-zinc-900 text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"><Check size={14} /></button>
         </div>
-      ) : <p className="text-xs text-slate-500 mt-3">Progress to {formatCurrency(initialGoal)} initial investment</p>}
+      ) : <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-400 mt-4">{percentComplete.toFixed(0)}% to {formatCurrency(initialGoal)} goal</p>}
     </div>
   );
 }
 
 function DashboardCard({ title, amount, subtitle, color, isNegative, highlight }) {
-  const colorMap = { blue: 'text-blue-600', red: 'text-red-600', emerald: 'text-emerald-600', orange: 'text-orange-600', indigo: 'text-indigo-600' };
+  const colorMap = { blue: 'text-blue-600', red: 'text-zinc-900', emerald: 'text-emerald-600', zinc: 'text-zinc-900', indigo: 'text-zinc-900' };
   return (
-    <div className={`bg-white rounded-xl border p-6 shadow-sm ${highlight ? 'ring-2 ring-emerald-500/20 shadow-md' : 'border-slate-200'}`}>
-      <h3 className="text-sm font-medium text-slate-500">{title}</h3>
-      <div className={`text-3xl font-bold mt-2 ${colorMap[color]}`}>{isNegative && amount > 0 ? '-' : ''}{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)}</div>
-      <p className="text-xs text-slate-400 mt-2">{subtitle}</p>
+    <div className={`bg-white rounded-3xl p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${highlight ? 'ring-1 ring-zinc-200/60' : 'border border-zinc-100'}`}>
+      <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{title}</h3>
+      <div className={`text-4xl font-semibold tracking-tighter mt-3 ${colorMap[color]}`}>{isNegative && amount > 0 ? '-' : ''}{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)}</div>
+      <p className="text-sm font-medium text-zinc-400 mt-2">{subtitle}</p>
     </div>
   );
 }
@@ -890,10 +888,8 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
   const { items: sortedRevenues, requestSort, sortConfig } = useSortableData(enrichedRevenues);
 
   const addRow = (e) => { e.preventDefault(); if (!formData.gross) return; onAdd(formData); setFormData({ date: '', orderNum: '', desc: '', qty: 1, gross: '', ebay: '', ad: '', shipping: '', state: '' }); };
-  
   const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item }); };
   const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
-
   const handleExport = () => {
     const headers = ['Date', 'Order #', 'State', 'Description', 'Qty', 'Gross', 'eBay Fee', 'Ad Fee', 'Shipping', 'Net Payout', 'True Profit', 'Margin %'];
     const data = sortedRevenues.map(r => [r.date, r.orderNum, r.state, r.desc, r.qty, r.gross, r.ebay || 0, r.ad || 0, r.shipping || 0, r.net, r.trueProfit, r.margin.toFixed(1)]);
@@ -910,16 +906,13 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       let headerIdx = 0;
       while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].includes('Order Number'))) headerIdx++;
       if (headerIdx >= parsed.length) { alert("Could not find standard eBay headers in this CSV."); return; }
-
       const headers = parsed[headerIdx];
       const dateIdx = headers.indexOf('Sale Date'); const orderIdx = headers.indexOf('Order Number');
       const titleIdx = headers.indexOf('Item Title'); const soldForIdx = headers.indexOf('Sold For');
       const shipHandIdx = headers.indexOf('Shipping And Handling'); const qtyIdx = headers.indexOf('Quantity');
       const stateIdx = headers.indexOf('Ship To State');
-      
       const newRows = [];
       const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
-      
       for (let i = headerIdx + 1; i < parsed.length; i++) {
         const row = parsed[i];
         if (row.length < headers.length || !row[orderIdx]) continue;
@@ -931,7 +924,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         const gross = cleanNum(row[soldForIdx]) + cleanNum(row[shipHandIdx]);
         const qty = qtyIdx > -1 ? (cleanNum(row[qtyIdx]) || 1) : 1;
         const state = stateIdx > -1 ? (row[stateIdx] || '').toUpperCase().trim() : '';
-
         newRows.push({ id: Date.now() + i, date: formattedDate, orderNum: row[orderIdx], desc: row[titleIdx], state, qty, gross: gross.toFixed(2), ebay: '', ad: '', shipping: '' });
       }
       setImportPreview(newRows);
@@ -943,119 +935,124 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
   const confirmImport = () => { importPreview.forEach(r => { onAdd({ date: r.date, orderNum: r.orderNum, state: r.state, desc: r.desc, qty: r.qty, gross: r.gross, ebay: r.ebay, ad: r.ad, shipping: r.shipping }); }); setImportPreview(null); };
 
   return (
-    <div className="space-y-6 animate-in fade-in">
+    <div className="space-y-8 animate-in fade-in">
       {importPreview && (
-        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-              <div><h2 className="text-xl font-bold text-slate-800">Review & Add Fees</h2></div>
-              <button onClick={() => setImportPreview(null)} className="text-slate-400 hover:text-red-500"><X size={24}/></button>
+        <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-[2rem] shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-zinc-200/50">
+            <div className="p-8 border-b border-zinc-100 flex justify-between items-center">
+              <div><h2 className="text-xl font-bold tracking-tight text-zinc-900">Review Import</h2></div>
+              <button onClick={() => setImportPreview(null)} className="text-zinc-400 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full transition-colors"><X size={20}/></button>
             </div>
-            <div className="overflow-y-auto p-6 bg-slate-100 flex-1">
-              <table className="w-full text-left text-sm whitespace-nowrap bg-white rounded shadow-sm">
-                <thead className="bg-slate-800 text-slate-100 sticky top-0 z-10">
-                  <tr><th className="p-3">Date</th><th className="p-3">Order #</th><th className="p-3 w-1/4">Item</th><th className="p-3 text-center">Qty</th><th className="p-3 text-right">Gross Sale</th><th className="p-3">eBay Fee $</th><th className="p-3">Ad Fee $</th><th className="p-3">Shipping Label $</th></tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {importPreview.map(r => (
-                    <tr key={r.id} className="hover:bg-slate-50">
-                      <td className="p-3">{r.date}</td><td className="p-3 font-mono text-xs text-slate-500">{r.orderNum}</td><td className="p-3 truncate max-w-xs" title={r.desc}>{r.desc}</td><td className="p-3 text-center font-bold text-slate-700">{r.qty}</td><td className="p-3 text-right font-medium">{formatCurrency(r.gross)}</td>
-                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" value={r.ebay} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ebay: e.target.value } : pr))}/></td>
-                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" value={r.ad} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ad: e.target.value } : pr))}/></td>
-                      <td className="p-2"><input type="number" step="0.01" className="w-24 border border-slate-300 rounded p-1.5 outline-none focus:border-blue-500" value={r.shipping} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, shipping: e.target.value } : pr))}/></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="overflow-y-auto p-8 bg-[#fbfbfd] flex-1">
+              <div className="bg-white rounded-2xl border border-zinc-100 overflow-hidden shadow-sm">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-zinc-50 border-b border-zinc-100">
+                    <tr><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Date</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Order</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 w-1/4">Item</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 text-center">Qty</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 text-right">Gross</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">eBay Fee $</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Ad Fee $</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Ship $</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-50">
+                    {importPreview.map(r => (
+                      <tr key={r.id} className="hover:bg-zinc-50/50">
+                        <td className="px-6 py-3 font-medium text-zinc-500">{r.date}</td><td className="px-6 py-3 font-mono text-[11px] text-zinc-400">{r.orderNum}</td><td className="px-6 py-3 truncate max-w-xs font-medium text-zinc-900" title={r.desc}>{r.desc}</td><td className="px-6 py-3 text-center font-bold text-zinc-900">{r.qty}</td><td className="px-6 py-3 text-right font-semibold">{formatCurrency(r.gross)}</td>
+                        <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.ebay} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ebay: e.target.value } : pr))}/></td>
+                        <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.ad} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ad: e.target.value } : pr))}/></td>
+                        <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.shipping} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, shipping: e.target.value } : pr))}/></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="p-4 border-t border-slate-200 bg-white flex justify-end space-x-3">
-              <button onClick={() => setImportPreview(null)} className="px-4 py-2 rounded text-slate-600 hover:bg-slate-100 font-medium transition-colors">Cancel</button>
-              <button onClick={confirmImport} className="px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center transition-colors"><Check size={18} className="mr-2"/> Save {importPreview.length} Orders</button>
+            <div className="p-6 border-t border-zinc-100 bg-white flex justify-end space-x-3">
+              <button onClick={() => setImportPreview(null)} className="px-6 py-3 rounded-xl text-zinc-500 hover:bg-zinc-100 font-semibold transition-colors">Cancel</button>
+              <button onClick={confirmImport} className="px-8 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-semibold flex items-center transition-all hover:-translate-y-0.5"><Check size={18} className="mr-2"/> Save {importPreview.length} Orders</button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4 text-slate-800">Add Single Sale</h2>
+      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Manual Sale</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-8 gap-4">
-          <input type="date" className="input-field col-span-1" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-          <input type="text" placeholder="Order #" className="input-field col-span-1" value={formData.orderNum} onChange={e => setFormData({...formData, orderNum: e.target.value})} />
-          <input type="text" maxLength="2" placeholder="State (AZ)" className="input-field col-span-1" value={formData.state} onChange={e => setFormData({...formData, state: e.target.value.toUpperCase()})} />
-          <input type="text" placeholder="Description" className="input-field col-span-1 sm:col-span-1" value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
-          <input type="number" step="0.01" placeholder="Gross ($)" className="input-field" value={formData.gross} onChange={e => setFormData({...formData, gross: e.target.value})} required />
-          <input type="number" step="0.01" placeholder="eBay Fee ($)" className="input-field" value={formData.ebay} onChange={e => setFormData({...formData, ebay: e.target.value})} />
-          <input type="number" step="0.01" placeholder="Ad Fee ($)" className="input-field" value={formData.ad} onChange={e => setFormData({...formData, ad: e.target.value})} />
-          <input type="number" step="0.01" placeholder="Shipping ($)" className="input-field" value={formData.shipping} onChange={e => setFormData({...formData, shipping: e.target.value})} />
-          <button type="submit" className="md:col-span-8 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Add Sale</button>
+          <input type="date" className={`${inlineInputStyle} col-span-1`} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+          <input type="text" placeholder="Order #" className={`${inlineInputStyle} col-span-1`} value={formData.orderNum} onChange={e => setFormData({...formData, orderNum: e.target.value})} />
+          <input type="text" maxLength="2" placeholder="State (AZ)" className={`${inlineInputStyle} col-span-1`} value={formData.state} onChange={e => setFormData({...formData, state: e.target.value.toUpperCase()})} />
+          <input type="text" placeholder="Description" className={`${inlineInputStyle} col-span-1 sm:col-span-1`} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
+          <input type="number" step="0.01" placeholder="Gross ($)" className={inlineInputStyle} value={formData.gross} onChange={e => setFormData({...formData, gross: e.target.value})} required />
+          <input type="number" step="0.01" placeholder="eBay Fee" className={inlineInputStyle} value={formData.ebay} onChange={e => setFormData({...formData, ebay: e.target.value})} />
+          <input type="number" step="0.01" placeholder="Ad Fee" className={inlineInputStyle} value={formData.ad} onChange={e => setFormData({...formData, ad: e.target.value})} />
+          <input type="number" step="0.01" placeholder="Ship ($)" className={inlineInputStyle} value={formData.shipping} onChange={e => setFormData({...formData, shipping: e.target.value})} />
+          <button type="submit" className="md:col-span-8 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5"><Plus size={18} className="mr-2" /> Add Record</button>
         </form>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-6">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <h3 className="font-semibold text-slate-700">Sales History (COGS per unit: {formatCurrency(costPerTrainer)})</h3>
-          <div className="flex space-x-4">
+      <div className="bg-white rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
+        <div className="p-6 border-b border-zinc-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <div>
+            <h3 className="font-bold tracking-tight text-zinc-900 text-lg">Sales Ledger</h3>
+            <p className="text-xs font-medium text-zinc-400 mt-1 uppercase tracking-widest">COGS Model: {formatCurrency(costPerTrainer)}</p>
+          </div>
+          <div className="flex space-x-3">
             <input type="file" accept=".csv" id="csv-upload" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
-            <button onClick={() => fileInputRef.current.click()} className="text-sm font-medium text-slate-600 hover:text-slate-800 flex items-center transition-colors border border-slate-300 px-3 py-1.5 rounded-md bg-white shadow-sm"><Upload size={16} className="mr-1.5" /> Import eBay CSV</button>
-            <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm"><Download size={16} className="mr-1.5" /> Export CSV</button>
+            <button onClick={() => fileInputRef.current.click()} className="text-xs font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Upload size={14} className="mr-2" /> Import CSV</button>
+            <button onClick={handleExport} className="text-xs font-bold uppercase tracking-widest text-blue-600 hover:text-blue-800 flex items-center transition-colors bg-blue-50 border border-blue-100 px-4 py-2 rounded-full hover:bg-blue-100"><Download size={14} className="mr-2" /> Export</button>
           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-white border-b border-slate-200 text-slate-500">
+            <thead className="bg-zinc-50/50 border-b border-zinc-100">
               <tr>
                 <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Order #" sortKey="orderNum" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="State" sortKey="state" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Order" sortKey="orderNum" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="ST" sortKey="state" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Qty" sortKey="qty" currentSort={sortConfig} requestSort={requestSort} alignRight />
                 <SortableHeader label="Gross" sortKey="gross" currentSort={sortConfig} requestSort={requestSort} alignRight />
-                <SortableHeader label="Fees & Ship" sortKey="ebay" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-red-500" />
-                <SortableHeader label="Net Payout" sortKey="net" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-blue-600" />
+                <SortableHeader label="Fees/Ship" sortKey="ebay" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-zinc-400" />
+                <SortableHeader label="Net" sortKey="net" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-blue-600" />
                 <SortableHeader label="True Profit" sortKey="trueProfit" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-emerald-600" />
                 <SortableHeader label="Margin" sortKey="margin" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-emerald-600" />
-                <th className="p-4"></th>
+                <th className="px-6 py-4"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {sortedRevenues.length === 0 ? <tr><td colSpan="11" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedRevenues.map(r => {
+            <tbody className="divide-y divide-zinc-50">
+              {sortedRevenues.length === 0 ? <tr><td colSpan="11" className="p-8 text-center text-zinc-400 font-medium">No records found.</td></tr> : sortedRevenues.map(r => {
                 const totalFees = Number(r.ebay || 0) + Number(r.ad || 0) + Number(r.shipping || 0);
                 return editingId === r.id ? (
-                  <tr key={r.id} className="bg-blue-50/50">
-                    <td className="p-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
-                    <td className="p-2"><input type="text" className={`${inlineInputStyle} w-20`} value={editForm.orderNum} onChange={ev => setEditForm({...editForm, orderNum: ev.target.value})} /></td>
-                    <td className="p-2"><input type="text" maxLength="2" className={`${inlineInputStyle} w-12`} value={editForm.state} onChange={ev => setEditForm({...editForm, state: ev.target.value.toUpperCase()})} /></td>
-                    <td className="p-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
-                    <td className="p-2"><input type="number" min="1" className={`${inlineInputStyle} w-16 text-center`} value={editForm.qty} onChange={ev => setEditForm({...editForm, qty: ev.target.value})} /></td>
-                    <td className="p-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.gross} onChange={ev => setEditForm({...editForm, gross: ev.target.value})} /></td>
-                    <td className="p-2 flex space-x-1">
+                  <tr key={r.id} className="bg-blue-50/30">
+                    <td className="px-2 py-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
+                    <td className="px-2 py-2"><input type="text" className={`${inlineInputStyle} w-20`} value={editForm.orderNum} onChange={ev => setEditForm({...editForm, orderNum: ev.target.value})} /></td>
+                    <td className="px-2 py-2"><input type="text" maxLength="2" className={`${inlineInputStyle} w-12`} value={editForm.state} onChange={ev => setEditForm({...editForm, state: ev.target.value.toUpperCase()})} /></td>
+                    <td className="px-2 py-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
+                    <td className="px-2 py-2"><input type="number" min="1" className={`${inlineInputStyle} w-16 text-center`} value={editForm.qty} onChange={ev => setEditForm({...editForm, qty: ev.target.value})} /></td>
+                    <td className="px-2 py-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.gross} onChange={ev => setEditForm({...editForm, gross: ev.target.value})} /></td>
+                    <td className="px-2 py-2 flex space-x-1">
                       <input type="number" step="0.01" className={`${inlineInputStyle} w-16`} placeholder="eBay" title="eBay Fee" value={editForm.ebay} onChange={ev => setEditForm({...editForm, ebay: ev.target.value})} />
                       <input type="number" step="0.01" className={`${inlineInputStyle} w-16`} placeholder="Ad" title="Ad Fee" value={editForm.ad} onChange={ev => setEditForm({...editForm, ad: ev.target.value})} />
                       <input type="number" step="0.01" className={`${inlineInputStyle} w-16`} placeholder="Ship" title="Shipping" value={editForm.shipping} onChange={ev => setEditForm({...editForm, shipping: ev.target.value})} />
                     </td>
-                    <td className="p-4 text-right text-slate-400">-</td>
-                    <td className="p-4 text-right text-slate-400">-</td>
-                    <td className="p-4 text-right text-slate-400">-</td>
-                    <td className="p-2 text-right space-x-3">
-                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700"><Check size={18}/></button>
-                      <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-600"><X size={18}/></button>
+                    <td className="px-6 py-4 text-right text-zinc-300">-</td>
+                    <td className="px-6 py-4 text-right text-zinc-300">-</td>
+                    <td className="px-6 py-4 text-right text-zinc-300">-</td>
+                    <td className="px-4 py-2 text-right space-x-2">
+                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700 p-1 bg-emerald-50 rounded"><Check size={16}/></button>
+                      <button onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-zinc-600 p-1 bg-zinc-100 rounded"><X size={16}/></button>
                     </td>
                   </tr>
                 ) : (
-                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4">{r.date}</td>
-                    <td className="p-4 text-slate-500 font-mono text-xs">{r.orderNum || '-'}</td>
-                    <td className="p-4 font-bold text-slate-600">{r.state || '-'}</td>
-                    <td className="p-4 truncate max-w-[200px]" title={r.desc}>{r.desc}</td>
-                    <td className="p-4 text-center font-bold text-slate-700">{r.qty}</td>
-                    <td className="p-4 text-right font-medium">{formatCurrency(r.gross)}</td>
-                    <td className="p-4 text-right text-slate-500" title={`eBay: ${formatCurrency(r.ebay || 0)} | Ad: ${formatCurrency(r.ad || 0)} | Ship: ${formatCurrency(r.shipping || 0)}`}>{formatCurrency(totalFees)}</td>
-                    <td className="p-4 text-right font-medium text-blue-600">{formatCurrency(r.net)}</td>
-                    <td className="p-4 text-right font-bold text-emerald-600">{formatCurrency(r.trueProfit)}</td>
-                    <td className="p-4 text-right font-bold text-emerald-600">{r.margin.toFixed(1)}%</td>
-                    <td className="p-4 text-right space-x-3">
-                      <button onClick={() => startEdit(r)} className="text-slate-400 hover:text-blue-600"><Edit2 size={16} /></button>
-                      <button onClick={() => onDelete(r.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={16} /></button>
+                  <tr key={r.id} className="hover:bg-zinc-50/50 transition-colors group">
+                    <td className="px-6 py-4 font-medium text-zinc-500">{r.date}</td>
+                    <td className="px-6 py-4 text-zinc-400 font-mono text-[10px] tracking-wider">{r.orderNum || '-'}</td>
+                    <td className="px-6 py-4 font-bold text-zinc-900 text-xs">{r.state || '-'}</td>
+                    <td className="px-6 py-4 truncate max-w-[200px] font-semibold text-zinc-800" title={r.desc}>{r.desc}</td>
+                    <td className="px-6 py-4 text-center font-bold text-zinc-900">{r.qty}</td>
+                    <td className="px-6 py-4 text-right font-medium text-zinc-600">{formatCurrency(r.gross)}</td>
+                    <td className="px-6 py-4 text-right text-zinc-400" title={`eBay: ${formatCurrency(r.ebay || 0)} | Ad: ${formatCurrency(r.ad || 0)} | Ship: ${formatCurrency(r.shipping || 0)}`}>{formatCurrency(totalFees)}</td>
+                    <td className="px-6 py-4 text-right font-semibold text-blue-600">{formatCurrency(r.net)}</td>
+                    <td className="px-6 py-4 text-right font-bold text-emerald-600 tracking-tight">{formatCurrency(r.trueProfit)}</td>
+                    <td className="px-6 py-4 text-right font-bold text-emerald-600 tracking-tight">{r.margin.toFixed(0)}%</td>
+                    <td className="px-6 py-4 text-right space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => startEdit(r)} className="text-zinc-400 hover:text-zinc-900"><Edit2 size={16} /></button>
+                      <button onClick={() => onDelete(r.id)} className="text-zinc-300 hover:text-red-500"><Trash2 size={16} /></button>
                     </td>
                   </tr>
                 );
@@ -1099,70 +1096,72 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency, u
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4 text-slate-800">Log Expense to Vault</h2>
+    <div className="space-y-8 animate-in fade-in">
+      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Expense to Vault</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-5 gap-4">
-          <input type="date" className="input-field col-span-1" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-          <input type="text" placeholder="Description" className="input-field col-span-1" value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
-          <select className="input-field col-span-1" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
-          <input type="number" step="0.01" placeholder="Amount ($)" className="input-field col-span-1" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
-          <input type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files[0])} className="col-span-1 text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-          <button type="submit" disabled={isUploading} className="sm:col-span-5 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors">
-             {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading to Vault...</> : <><Plus size={18} className="mr-2" /> Add Expense & Save Receipt</>}
+          <input type="date" className={`${inlineInputStyle} col-span-1`} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+          <input type="text" placeholder="Description" className={`${inlineInputStyle} col-span-1`} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
+          <select className={`${inlineInputStyle} col-span-1`} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
+          <input type="number" step="0.01" placeholder="Amount ($)" className={`${inlineInputStyle} col-span-1`} value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
+          <input type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files[0])} className="col-span-1 text-[10px] uppercase font-bold tracking-wider text-zinc-500 file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:uppercase file:tracking-wider file:font-bold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 transition-colors cursor-pointer" />
+          <button type="submit" disabled={isUploading} className="sm:col-span-5 bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-300 text-white font-semibold py-3.5 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2">
+             {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading to Vault...</> : <><Plus size={18} className="mr-2" /> Save to Ledger & Vault</>}
           </button>
         </form>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h3 className="font-semibold text-slate-700">Audit-Proof Expense History</h3>
-          <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm"><Download size={16} className="mr-1.5" /> Export CSV</button>
+      <div className="bg-white rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
+        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+          <h3 className="font-bold tracking-tight text-zinc-900 text-lg">Audit-Proof Ledger</h3>
+          <button onClick={handleExport} className="text-xs font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-white border-b border-slate-200 text-slate-500">
+            <thead className="bg-zinc-50/50 border-b border-zinc-100">
               <tr>
                 <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Category" sortKey="category" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Amount" sortKey="amount" currentSort={sortConfig} requestSort={requestSort} alignRight />
-                <th className="p-4 font-medium text-center">Receipt</th>
-                <th className="p-4"></th>
+                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-zinc-400 text-center select-none">Receipt</th>
+                <th className="px-6 py-4"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {sortedExpenses.length === 0 ? <tr><td colSpan="6" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedExpenses.map(e => (
+            <tbody className="divide-y divide-zinc-50">
+              {sortedExpenses.length === 0 ? <tr><td colSpan="6" className="p-8 text-center text-zinc-400 font-medium">No records found.</td></tr> : sortedExpenses.map(e => (
                 editingId === e.id ? (
-                  <tr key={e.id} className="bg-blue-50/50">
-                    <td className="p-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
-                    <td className="p-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
-                    <td className="p-2">
+                  <tr key={e.id} className="bg-blue-50/30">
+                    <td className="px-3 py-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
+                    <td className="px-3 py-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
+                    <td className="px-3 py-2">
                       <select className={inlineInputStyle} value={editForm.category} onChange={ev => setEditForm({...editForm, category: ev.target.value})}>
                         {categories.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </td>
-                    <td className="p-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.amount} onChange={ev => setEditForm({...editForm, amount: ev.target.value})} /></td>
-                    <td className="p-2 text-center text-slate-400">-</td>
-                    <td className="p-2 text-right space-x-3">
-                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700"><Check size={18}/></button>
-                      <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-600"><X size={18}/></button>
+                    <td className="px-3 py-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.amount} onChange={ev => setEditForm({...editForm, amount: ev.target.value})} /></td>
+                    <td className="px-6 py-4 text-center text-zinc-300">-</td>
+                    <td className="px-4 py-2 text-right space-x-2">
+                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700 p-1 bg-emerald-50 rounded"><Check size={16}/></button>
+                      <button onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-zinc-600 p-1 bg-zinc-100 rounded"><X size={16}/></button>
                     </td>
                   </tr>
                 ) : (
-                  <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4">{e.date}</td><td className="p-4">{e.desc}</td><td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{e.category}</span></td>
-                    <td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td>
-                    <td className="p-4 text-center">
+                  <tr key={e.id} className="hover:bg-zinc-50/50 transition-colors group">
+                    <td className="px-6 py-4 font-medium text-zinc-500">{e.date}</td>
+                    <td className="px-6 py-4 font-semibold text-zinc-800">{e.desc}</td>
+                    <td className="px-6 py-4"><span className="px-3 py-1 bg-zinc-100 rounded-lg text-[10px] font-bold uppercase tracking-wider text-zinc-600 border border-zinc-200/60">{e.category}</span></td>
+                    <td className="px-6 py-4 text-right font-semibold text-zinc-900 tracking-tight">{formatCurrency(e.amount)}</td>
+                    <td className="px-6 py-4 text-center">
                       {e.receiptUrl ? (
-                        <a href={e.receiptUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors" title="View Receipt">
-                          <ImageIcon size={16} />
+                        <a href={e.receiptUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center p-2 bg-zinc-100 text-zinc-700 rounded-xl hover:bg-zinc-200 hover:text-zinc-900 transition-colors" title="View Receipt">
+                          <ImageIcon size={14} />
                         </a>
-                      ) : <span className="text-slate-300">-</span>}
+                      ) : <span className="text-zinc-300">-</span>}
                     </td>
-                    <td className="p-4 text-right space-x-3">
-                      <button onClick={() => startEdit(e)} className="text-slate-400 hover:text-blue-600"><Edit2 size={16}/></button>
-                      <button onClick={() => onDelete(e.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                    <td className="px-6 py-4 text-right space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => startEdit(e)} className="text-zinc-400 hover:text-zinc-900"><Edit2 size={16}/></button>
+                      <button onClick={() => onDelete(e.id)} className="text-zinc-300 hover:text-red-500"><Trash2 size={16}/></button>
                     </td>
                   </tr>
                 )
@@ -1193,28 +1192,28 @@ function OwnerEquity({ equities, initialGoal, onAdd, onUpdate, onDelete, formatC
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4 text-slate-800">Record Payout or Transfer</h2>
+    <div className="space-y-8 animate-in fade-in">
+      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Record Transfer</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <input type="date" className="input-field" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-          <input type="text" placeholder="Description (e.g. Owner Draw)" className="input-field" value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
-          <select className="input-field" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+          <input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+          <input type="text" placeholder="Description (e.g. Owner Draw)" className={inlineInputStyle} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
+          <select className={inlineInputStyle} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <input type="number" step="0.01" placeholder="Amount ($)" className="input-field" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
-          <button type="submit" className="sm:col-span-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Log Transaction</button>
+          <input type="number" step="0.01" placeholder="Amount ($)" className={inlineInputStyle} value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
+          <button type="submit" className="sm:col-span-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2"><Plus size={18} className="mr-2" /> Log Transaction</button>
         </form>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h3 className="font-semibold text-slate-700">Transaction History</h3>
-          <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm"><Download size={16} className="mr-1.5" /> Export CSV</button>
+      <div className="bg-white rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
+        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+          <h3 className="font-bold tracking-tight text-zinc-900 text-lg">Transaction History</h3>
+          <button onClick={handleExport} className="text-xs font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-white border-b border-slate-200 text-slate-500">
+            <thead className="bg-zinc-50/50 border-b border-zinc-100">
               <tr>
                 <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
@@ -1223,32 +1222,32 @@ function OwnerEquity({ equities, initialGoal, onAdd, onUpdate, onDelete, formatC
                 <th className="p-4"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {sortedEquities.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedEquities.map(e => (
+            <tbody className="divide-y divide-zinc-50">
+              {sortedEquities.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-zinc-400 font-medium">No records found.</td></tr> : sortedEquities.map(e => (
                 editingId === e.id ? (
-                  <tr key={e.id} className="bg-blue-50/50">
-                    <td className="p-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
-                    <td className="p-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
-                    <td className="p-2">
+                  <tr key={e.id} className="bg-blue-50/30">
+                    <td className="px-3 py-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
+                    <td className="px-3 py-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
+                    <td className="px-3 py-2">
                       <select className={inlineInputStyle} value={editForm.category} onChange={ev => setEditForm({...editForm, category: ev.target.value})}>
                         {categories.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </td>
-                    <td className="p-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.amount} onChange={ev => setEditForm({...editForm, amount: ev.target.value})} /></td>
-                    <td className="p-2 text-right space-x-3">
-                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700"><Check size={18}/></button>
-                      <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-600"><X size={18}/></button>
+                    <td className="px-3 py-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.amount} onChange={ev => setEditForm({...editForm, amount: ev.target.value})} /></td>
+                    <td className="px-4 py-2 text-right space-x-2">
+                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700 p-1 bg-emerald-50 rounded"><Check size={16}/></button>
+                      <button onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-zinc-600 p-1 bg-zinc-100 rounded"><X size={16}/></button>
                     </td>
                   </tr>
                 ) : (
-                  <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4">{e.date}</td>
-                    <td className="p-4">{e.desc}</td>
-                    <td className="p-4"><span className="px-2 py-1 bg-slate-100 rounded text-xs">{e.category || 'Recoup Investment'}</span></td>
-                    <td className="p-4 text-right font-medium">{formatCurrency(e.amount)}</td>
-                    <td className="p-4 text-right space-x-3">
-                      <button onClick={() => startEdit(e)} className="text-slate-400 hover:text-blue-600"><Edit2 size={16}/></button>
-                      <button onClick={() => onDelete(e.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                  <tr key={e.id} className="hover:bg-zinc-50/50 transition-colors group">
+                    <td className="px-6 py-4 font-medium text-zinc-500">{e.date}</td>
+                    <td className="px-6 py-4 font-semibold text-zinc-800">{e.desc}</td>
+                    <td className="px-6 py-4"><span className="px-3 py-1 bg-zinc-100 rounded-lg text-[10px] font-bold uppercase tracking-wider text-zinc-600 border border-zinc-200/60">{e.category || 'Recoup Investment'}</span></td>
+                    <td className="px-6 py-4 text-right font-semibold text-zinc-900 tracking-tight">{formatCurrency(e.amount)}</td>
+                    <td className="px-6 py-4 text-right space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => startEdit(e)} className="text-zinc-400 hover:text-zinc-900"><Edit2 size={16}/></button>
+                      <button onClick={() => onDelete(e.id)} className="text-zinc-300 hover:text-red-500"><Trash2 size={16}/></button>
                     </td>
                   </tr>
                 )
@@ -1281,53 +1280,55 @@ function MileageLog({ mileages, onAdd, onUpdate, onDelete, formatCurrency }) {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-2 text-slate-800">Track Business Miles</h2>
+    <div className="space-y-8 animate-in fade-in">
+      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Track Miles</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <input type="date" className="input-field" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-          <input type="text" placeholder="Trip Description" className="input-field" value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
-          <input type="number" step="0.1" placeholder="Total Miles" className="input-field" value={formData.miles} onChange={e => setFormData({...formData, miles: e.target.value})} required />
-          <button type="submit" className="sm:col-span-3 bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center transition-colors"><Plus size={18} className="mr-2" /> Log Miles</button>
+          <input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+          <input type="text" placeholder="Trip Description" className={inlineInputStyle} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
+          <input type="number" step="0.1" placeholder="Total Miles" className={inlineInputStyle} value={formData.miles} onChange={e => setFormData({...formData, miles: e.target.value})} required />
+          <button type="submit" className="sm:col-span-3 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2"><Plus size={18} className="mr-2" /> Log Miles</button>
         </form>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h3 className="font-semibold text-slate-700">Trip History</h3>
-          <button onClick={handleExport} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center transition-colors border border-blue-200 px-3 py-1.5 rounded-md bg-blue-50 shadow-sm"><Download size={16} className="mr-1.5" /> Export CSV</button>
+      <div className="bg-white rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
+        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+          <h3 className="font-bold tracking-tight text-zinc-900 text-lg">Trip Log</h3>
+          <button onClick={handleExport} className="text-xs font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-white border-b border-slate-200 text-slate-500">
+            <thead className="bg-zinc-50/50 border-b border-zinc-100">
               <tr>
                 <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Trip Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
+                <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Miles" sortKey="miles" currentSort={sortConfig} requestSort={requestSort} alignRight />
-                <SortableHeader label="Deduction Value" sortKey="deduction" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-blue-600" />
+                <SortableHeader label="Deduction" sortKey="deduction" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-zinc-500" />
                 <th className="p-4"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {sortedMileages.length === 0 ? <tr><td colSpan="5" className="p-4 text-center text-slate-400">No records found.</td></tr> : sortedMileages.map(m => (
+            <tbody className="divide-y divide-zinc-50">
+              {sortedMileages.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-zinc-400 font-medium">No records found.</td></tr> : sortedMileages.map(m => (
                 editingId === m.id ? (
-                  <tr key={m.id} className="bg-blue-50/50">
-                    <td className="p-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
-                    <td className="p-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
-                    <td className="p-2"><input type="number" step="0.1" className={inlineInputStyle} value={editForm.miles} onChange={ev => setEditForm({...editForm, miles: ev.target.value})} /></td>
-                    <td className="p-4 text-right text-slate-400">-</td>
-                    <td className="p-2 text-right space-x-3">
-                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700"><Check size={18}/></button>
-                      <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-600"><X size={18}/></button>
+                  <tr key={m.id} className="bg-blue-50/30">
+                    <td className="px-3 py-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
+                    <td className="px-3 py-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
+                    <td className="px-3 py-2"><input type="number" step="0.1" className={inlineInputStyle} value={editForm.miles} onChange={ev => setEditForm({...editForm, miles: ev.target.value})} /></td>
+                    <td className="px-6 py-4 text-right text-zinc-300">-</td>
+                    <td className="px-4 py-2 text-right space-x-2">
+                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700 p-1 bg-emerald-50 rounded"><Check size={16}/></button>
+                      <button onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-zinc-600 p-1 bg-zinc-100 rounded"><X size={16}/></button>
                     </td>
                   </tr>
                 ) : (
-                  <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4">{m.date}</td><td className="p-4">{m.desc}</td><td className="p-4 text-right font-medium">{m.miles} mi</td>
-                    <td className="p-4 text-right font-bold text-blue-600">{formatCurrency(m.deduction)}</td>
-                    <td className="p-4 text-right space-x-3">
-                      <button onClick={() => startEdit(m)} className="text-slate-400 hover:text-blue-600"><Edit2 size={16}/></button>
-                      <button onClick={() => onDelete(m.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                  <tr key={m.id} className="hover:bg-zinc-50/50 transition-colors group">
+                    <td className="px-6 py-4 font-medium text-zinc-500">{m.date}</td>
+                    <td className="px-6 py-4 font-semibold text-zinc-800">{m.desc}</td>
+                    <td className="px-6 py-4 text-right font-semibold text-zinc-900">{m.miles} mi</td>
+                    <td className="px-6 py-4 text-right font-bold text-zinc-500 tracking-tight">{formatCurrency(m.deduction)}</td>
+                    <td className="px-6 py-4 text-right space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => startEdit(m)} className="text-zinc-400 hover:text-zinc-900"><Edit2 size={16}/></button>
+                      <button onClick={() => onDelete(m.id)} className="text-zinc-300 hover:text-red-500"><Trash2 size={16}/></button>
                     </td>
                   </tr>
                 )
@@ -1345,49 +1346,49 @@ function Manufacturing({ cogs, onUpdate, costPerTrainer, blackPetgCostPerGram, w
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="text-lg font-semibold mb-4 text-slate-800">COGS Variables</h2>
-          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-            <h3 className="font-medium text-slate-700">Raw Materials</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+          <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-8">Supply Variables</h2>
+          <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-2 hide-scrollbar">
+            <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Raw Materials</h3>
             <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-xs text-slate-500 mb-1">Black PETG Spool Cost</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="blackSpoolCost" value={cogs.blackSpoolCost || ''} onChange={handleChange} className="input-field pl-8" /></div></div>
-              <div><label className="block text-xs text-slate-500 mb-1">Black Grams Used</label><input type="number" name="blackGramsUsed" value={cogs.blackGramsUsed || ''} onChange={handleChange} className="input-field" /></div>
+              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Black Spool $</label><input type="number" step="0.01" name="blackSpoolCost" value={cogs.blackSpoolCost || ''} onChange={handleChange} className={inlineInputStyle} /></div>
+              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Black Grams</label><input type="number" name="blackGramsUsed" value={cogs.blackGramsUsed || ''} onChange={handleChange} className={inlineInputStyle} /></div>
             </div>
-            <div className="grid grid-cols-2 gap-4 mt-2">
-              <div><label className="block text-xs text-slate-500 mb-1">White PETG Spool Cost</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="whiteSpoolCost" value={cogs.whiteSpoolCost || ''} onChange={handleChange} className="input-field pl-8" /></div></div>
-              <div><label className="block text-xs text-slate-500 mb-1">White Grams Used</label><input type="number" name="whiteGramsUsed" value={cogs.whiteGramsUsed || ''} onChange={handleChange} className="input-field" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">White Spool $</label><input type="number" step="0.01" name="whiteSpoolCost" value={cogs.whiteSpoolCost || ''} onChange={handleChange} className={inlineInputStyle} /></div>
+              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">White Grams</label><input type="number" name="whiteGramsUsed" value={cogs.whiteGramsUsed || ''} onChange={handleChange} className={inlineInputStyle} /></div>
             </div>
-            <div className="grid grid-cols-2 gap-4 mt-2">
-              <div><label className="block text-xs text-slate-500 mb-1">Concrete Cost per lb</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="concreteCost" value={cogs.concreteCost} onChange={handleChange} className="input-field pl-8" /></div></div>
-              <div><label className="block text-xs text-slate-500 mb-1">lbs Used</label><input type="number" step="0.1" name="lbsUsed" value={cogs.lbsUsed} onChange={handleChange} className="input-field" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Concrete $/lb</label><input type="number" step="0.01" name="concreteCost" value={cogs.concreteCost} onChange={handleChange} className={inlineInputStyle} /></div>
+              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">lbs Used</label><input type="number" step="0.1" name="lbsUsed" value={cogs.lbsUsed} onChange={handleChange} className={inlineInputStyle} /></div>
             </div>
-            <hr className="border-slate-100 my-4" />
-            <h3 className="font-medium text-slate-700">Hardware (Cost Per Trainer)</h3>
+            <hr className="border-zinc-100 my-6" />
+            <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Hardware</h3>
             <div className="grid grid-cols-3 gap-4">
-              <div><label className="block text-xs text-slate-500 mb-1">Screws</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="screwsCost" value={cogs.screwsCost} onChange={handleChange} className="input-field pl-8" /></div></div>
-              <div><label className="block text-xs text-slate-500 mb-1">Inserts</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="insertsCost" value={cogs.insertsCost} onChange={handleChange} className="input-field pl-8" /></div></div>
-              <div><label className="block text-xs text-slate-500 mb-1">Washers</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="washersCost" value={cogs.washersCost} onChange={handleChange} className="input-field pl-8" /></div></div>
+              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Screws</label><input type="number" step="0.01" name="screwsCost" value={cogs.screwsCost} onChange={handleChange} className={inlineInputStyle} /></div>
+              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Inserts</label><input type="number" step="0.01" name="insertsCost" value={cogs.insertsCost} onChange={handleChange} className={inlineInputStyle} /></div>
+              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Washers</label><input type="number" step="0.01" name="washersCost" value={cogs.washersCost} onChange={handleChange} className={inlineInputStyle} /></div>
             </div>
-            <hr className="border-slate-100 my-4" />
-            <h3 className="font-medium text-slate-700">Packaging (Cost Per Trainer)</h3>
+            <hr className="border-zinc-100 my-6" />
+            <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Packaging</h3>
             <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-xs text-slate-500 mb-1">Box / Mailer</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="boxCost" value={cogs.boxCost} onChange={handleChange} className="input-field pl-8" /></div></div>
-              <div><label className="block text-xs text-slate-500 mb-1">Bubble Wrap</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="bubbleWrapCost" value={cogs.bubbleWrapCost} onChange={handleChange} className="input-field pl-8" /></div></div>
+              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Box</label><input type="number" step="0.01" name="boxCost" value={cogs.boxCost} onChange={handleChange} className={inlineInputStyle} /></div>
+              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Wrap</label><input type="number" step="0.01" name="bubbleWrapCost" value={cogs.bubbleWrapCost} onChange={handleChange} className={inlineInputStyle} /></div>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-md text-white flex flex-col justify-center relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-10"><Settings size={120} className="animate-[spin_20s_linear_infinite]" /></div>
-          <h2 className="text-xl font-semibold mb-6 text-slate-200 z-10">Cost Per Unit Breakdown</h2>
-          <div className="space-y-4 z-10">
-            <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Black PETG Cost</span><span className="font-medium">{formatCurrency(blackPetgCostPerGram * (cogs.blackGramsUsed || 533))}</span></div>
-            <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">White PETG Cost</span><span className="font-medium">{formatCurrency(whitePetgCostPerGram * (cogs.whiteGramsUsed || 11))}</span></div>
-            <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Concrete Cost</span><span className="font-medium">{formatCurrency(cogs.concreteCost * cogs.lbsUsed)}</span></div>
-            <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Hardware (Screws, Inserts, Washers)</span><span className="font-medium">{formatCurrency(Number(cogs.screwsCost || 0) + Number(cogs.insertsCost || 0) + Number(cogs.washersCost || 0))}</span></div>
-            <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Packaging (Box & Wrap)</span><span className="font-medium">{formatCurrency(Number(cogs.boxCost || 0) + Number(cogs.bubbleWrapCost || 0))}</span></div>
-            <div className="pt-4 flex justify-between items-center"><span className="text-lg font-bold text-slate-200">Total True Cost:</span><span className="text-3xl font-extrabold text-emerald-400">{formatCurrency(costPerTrainer)}</span></div>
+        <div className="bg-zinc-900 rounded-[2.5rem] p-10 shadow-2xl shadow-zinc-900/20 text-white flex flex-col justify-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5"><Settings size={200} className="animate-[spin_40s_linear_infinite]" /></div>
+          <h2 className="text-2xl font-bold tracking-tight text-white mb-10 z-10">Unit Economics</h2>
+          <div className="space-y-5 z-10 text-sm font-medium">
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Black PETG</span><span className="font-bold tracking-tight">{formatCurrency(blackPetgCostPerGram * (cogs.blackGramsUsed || 533))}</span></div>
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">White PETG</span><span className="font-bold tracking-tight">{formatCurrency(whitePetgCostPerGram * (cogs.whiteGramsUsed || 11))}</span></div>
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Concrete</span><span className="font-bold tracking-tight">{formatCurrency(cogs.concreteCost * cogs.lbsUsed)}</span></div>
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Hardware</span><span className="font-bold tracking-tight">{formatCurrency(Number(cogs.screwsCost || 0) + Number(cogs.insertsCost || 0) + Number(cogs.washersCost || 0))}</span></div>
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Packaging</span><span className="font-bold tracking-tight">{formatCurrency(Number(cogs.boxCost || 0) + Number(cogs.bubbleWrapCost || 0))}</span></div>
+            <div className="pt-6 flex justify-between items-end"><span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Total COGS</span><span className="text-5xl font-semibold tracking-tighter text-emerald-400">{formatCurrency(costPerTrainer)}</span></div>
           </div>
         </div>
       </div>
@@ -1410,55 +1411,50 @@ function TaxSummary({ revenues, expenses, mileages, formatCurrency }) {
   const netProfit = grossSales - totalExpenses;
 
   const TaxLine = ({ line, description, amount, isTotal }) => (
-    <div className={`flex justify-between items-center py-3 border-b border-slate-100 ${isTotal ? 'bg-slate-50 font-semibold text-slate-800 p-3 rounded' : 'text-slate-600'}`}>
-      <div className="flex items-center"><span className="w-16 text-xs font-mono text-slate-400">Line {line}</span><span>{description}</span></div><span>{formatCurrency(amount)}</span>
+    <div className={`flex justify-between items-center py-3 border-b border-zinc-100 ${isTotal ? 'bg-zinc-50 font-bold text-zinc-900 p-4 rounded-xl mt-2' : 'text-zinc-600 text-sm font-medium'}`}>
+      <div className="flex items-center"><span className="w-16 text-[10px] font-bold tracking-widest text-zinc-400 uppercase">Line {line}</span><span>{description}</span></div><span className="tracking-tight">{formatCurrency(amount)}</span>
     </div>
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in print-area">
-      <div className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm">
+    <div className="space-y-6 animate-in fade-in print-area max-w-4xl mx-auto">
+      <div className="bg-white rounded-3xl border border-zinc-100 p-10 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
         
-        <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-200">
+        <div className="flex items-center justify-between mb-10 pb-6 border-b border-zinc-100">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">Apex Performance Concepts LLC</h2>
-            <p className="text-sm font-medium text-slate-50 mt-1">Schedule C (Form 1040) Tax Summary</p>
+            <h2 className="text-2xl font-bold tracking-tight text-zinc-900">Schedule C Preparer</h2>
+            <p className="text-sm font-medium text-zinc-400 mt-1">Apex Performance Concepts LLC</p>
           </div>
           <div className="text-right flex flex-col items-end">
-            <button 
-              onClick={() => window.print()} 
-              className="no-print mb-3 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center transition-colors"
-            >
-              <Printer size={16} className="mr-2"/> Save PDF Report
-            </button>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tax Year</p>
-            <p className="text-xl font-bold text-indigo-600">2026</p>
+            <button onClick={() => window.print()} className="no-print mb-4 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-wider py-2.5 px-5 rounded-full flex items-center transition-all hover:-translate-y-0.5"><Printer size={14} className="mr-2"/> Print PDF</button>
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Tax Year</p>
+            <p className="text-xl font-bold tracking-tight text-zinc-900">2026</p>
           </div>
         </div>
 
-        <div className="mb-8">
-          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-2 bg-slate-100 p-2 rounded">Part I: Income</h3>
+        <div className="mb-10">
+          <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-3 pl-1">Part I: Income</h3>
           <TaxLine line="1" description="Gross receipts or sales" amount={grossSales} />
           <TaxLine line="7" description="Gross income" amount={grossSales} isTotal />
         </div>
 
-        <div className="mb-8">
-          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-2 bg-slate-100 p-2 rounded">Part II: Expenses</h3>
+        <div className="mb-10">
+          <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-3 pl-1">Part II: Expenses</h3>
           <TaxLine line="8" description="Advertising" amount={expAdvertising} />
-          <TaxLine line="9" description="Car/truck expenses" amount={mileageDeduction} />
+          <TaxLine line="9" description="Car/truck expenses (Mileage)" amount={mileageDeduction} />
           <TaxLine line="10" description="Commissions and fees" amount={ebayAdFees} />
           <TaxLine line="18" description="Office expense" amount={expOffice} />
           <TaxLine line="22" description="Supplies" amount={expSupplies} />
           <TaxLine line="24a" description="Travel" amount={expTravel} />
           <TaxLine line="27a" description="Other: Shipping Labels" amount={shippingFees} />
           <TaxLine line="27a" description="Other: Equipment" amount={expEquipment} />
-          <div className="mt-2"><TaxLine line="28" description="Total expenses" amount={totalExpenses} isTotal /></div>
+          <TaxLine line="28" description="Total expenses" amount={totalExpenses} isTotal />
         </div>
 
-        <div className="mb-8">
-          <div className={`p-4 rounded-lg flex justify-between items-center border ${netProfit >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
-            <div className="flex items-center"><span className="w-16 text-xs font-mono font-bold opacity-70">Line 31</span><span className="font-bold text-lg">Net profit (or loss)</span></div>
-            <span className="text-2xl font-extrabold">{formatCurrency(netProfit)}</span>
+        <div className="mb-6">
+          <div className={`p-6 rounded-2xl flex justify-between items-center border ${netProfit >= 0 ? 'bg-emerald-50/50 border-emerald-200/60 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
+            <div className="flex items-center"><span className="w-16 text-[10px] uppercase tracking-widest font-bold opacity-50">Line 31</span><span className="font-bold text-lg tracking-tight">Net profit (or loss)</span></div>
+            <span className="text-3xl font-semibold tracking-tighter">{formatCurrency(netProfit)}</span>
           </div>
         </div>
       </div>
@@ -1468,14 +1464,13 @@ function TaxSummary({ revenues, expenses, mileages, formatCurrency }) {
 
 const style = document.createElement('style');
 style.textContent = `
-  .input-field { width: 100%; padding: 0.625rem 0.875rem; border-radius: 0.5rem; border: 1px solid #e2e8f0; background-color: #f8fafc; font-size: 0.875rem; transition: all 0.2s; outline: none; }
-  .input-field:focus { border-color: #3b82f6; background-color: #ffffff; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
   .hide-scrollbar::-webkit-scrollbar { display: none; } .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   @media print {
     .no-print { display: none !important; }
     body { background-color: white !important; -webkit-print-color-adjust: exact; }
     .print-bg-white { background-color: white !important; }
     .print-no-padding { padding: 0 !important; margin: 0 !important; }
+    .print-area { max-width: 100% !important; padding: 0 !important; border: none !important; box-shadow: none !important; }
     @page { margin: 0.5in; }
   }
 `;
