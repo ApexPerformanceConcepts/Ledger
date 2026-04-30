@@ -28,6 +28,80 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const getColRef = (colName) => isPreviewEnv ? collection(db, 'artifacts', appId, 'public', 'data', colName) : collection(db, colName);
 const getDocRef = (colName, docId) => isPreviewEnv ? doc(db, 'artifacts', appId, 'public', 'data', colName, docId) : doc(db, colName, docId);
 
+// --- UX PHYSICS & MICRO-INTERACTIONS ---
+
+// 1. Animated Number Ticker (Slot Machine Effect)
+const AnimatedNumber = ({ value, formatCurrency, isInt = false }) => {
+  const [displayValue, setDisplayValue] = useState(0);
+  
+  useEffect(() => {
+    let startTime;
+    const duration = 1200; // 1.2 second spin-up
+    const startValue = displayValue;
+    const endValue = Number(value) || 0;
+    
+    if (startValue === endValue) return;
+
+    const animate = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      // easeOutExpo for dramatic slow-down at the end
+      const easeOut = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress); 
+      const current = startValue + (endValue - startValue) * easeOut;
+      
+      setDisplayValue(current);
+      
+      if (progress < 1) requestAnimationFrame(animate);
+      else setDisplayValue(endValue);
+    };
+    
+    requestAnimationFrame(animate);
+  }, [value]);
+
+  if (formatCurrency) return formatCurrency(displayValue);
+  return isInt ? Math.round(displayValue).toLocaleString() : displayValue.toFixed(1);
+};
+
+// 2. Magnetic Button (Pulls towards cursor)
+const MagneticButton = ({ children, onClick, className }) => {
+  const buttonRef = useRef(null);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+
+  const handleMouseMove = (e) => {
+    if (!buttonRef.current) return;
+    const { clientX, clientY } = e;
+    const { width, height, left, top } = buttonRef.current.getBoundingClientRect();
+    const centerX = left + width / 2;
+    const centerY = top + height / 2;
+    
+    // Magnetic pull strength (20% of distance to center)
+    const x = (clientX - centerX) * 0.2; 
+    const y = (clientY - centerY) * 0.2;
+    setPosition({ x, y });
+  };
+
+  const handleMouseLeave = () => {
+    setPosition({ x: 0, y: 0 });
+  };
+
+  return (
+    <button
+      ref={buttonRef}
+      onClick={onClick}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{ 
+        transform: `translate(${position.x}px, ${position.y}px)`, 
+        // Snap back instantly using CSS spring approximation when mouse leaves
+        transition: position.x === 0 ? 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none' 
+      }}
+      className={className}
+    >
+      {children}
+    </button>
+  );
+};
+
 // --- HELPERS ---
 const exportToCsv = (filename, rows) => {
   const escapeCsv = (val) => '"' + String(val || '').replace(/"/g, '""') + '"';
@@ -231,7 +305,6 @@ export default function App() {
     Number(cogs.insertsCost || 0) + 
     Number(cogs.washersCost || 0);
 
-  // Revenue & Profit Math
   const totalUnitsSold = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.qty || 1), 0), [revenues]);
   const totalGrossRevenue = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.gross || 0), 0), [revenues]);
   const totalPlatformFees = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.ebay || 0) + Number(r.ad || 0) + Number(r.shipping || 0), 0), [revenues]);
@@ -250,7 +323,6 @@ export default function App() {
   }, [revenues, costPerTrainer]);
   const avgProfitPerUnit = totalUnitsSold > 0 ? totalTrueProfit / totalUnitsSold : 0;
 
-  // Draws & Bank Math
   const drawsRecoup = useMemo(() => equities.filter(e => e.category === 'Recoup Investment' || !e.category).reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
   const drawsGolf = useMemo(() => equities.filter(e => e.category === 'Golf Fund').reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
   const drawsOther = useMemo(() => equities.filter(e => e.category === 'Other Draw').reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
@@ -328,28 +400,40 @@ export default function App() {
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   
+  // iOS Style Pill Button
   const TabButton = ({ id, icon: Icon, label }) => (
-    <button onClick={() => setActiveTab(id)} className={`flex items-center space-x-2 px-5 py-4 text-sm font-semibold transition-all duration-300 border-b-2 whitespace-nowrap ${activeTab === id ? 'border-zinc-900 text-zinc-900' : 'border-transparent text-zinc-400 hover:text-zinc-700 hover:border-zinc-300'}`}>
-      <Icon size={18} strokeWidth={activeTab === id ? 2.5 : 2} /><span>{label}</span>
+    <button 
+      onClick={() => setActiveTab(id)} 
+      className={`relative flex items-center space-x-2 px-5 py-2.5 text-sm font-semibold transition-all duration-300 whitespace-nowrap rounded-full z-10 ${activeTab === id ? 'text-zinc-900' : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200/50'}`}
+    >
+      {activeTab === id && <div className="absolute inset-0 bg-white rounded-full shadow-[0_2px_10px_rgba(0,0,0,0.06)] border border-zinc-200/50 -z-10 animate-in zoom-in-95 duration-200"></div>}
+      <Icon size={16} strokeWidth={activeTab === id ? 2.5 : 2} className={activeTab === id ? 'text-blue-600' : ''} />
+      <span>{label}</span>
     </button>
   );
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-zinc-900 font-sans antialiased print-bg-white selection:bg-zinc-200">
+    <div className="min-h-screen bg-[#f8fafc] text-zinc-900 font-sans antialiased print-bg-white selection:bg-zinc-200 relative overflow-hidden">
       
+      {/* Ambient Blurred Backgrounds (Apple/Premium touch) */}
+      <div className="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none no-print">
+        <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vh] rounded-full bg-blue-400/5 blur-[100px]"></div>
+        <div className="absolute bottom-[-10%] right-[-5%] w-[40vw] h-[60vh] rounded-full bg-emerald-400/5 blur-[100px]"></div>
+      </div>
+
       {quickAction === 'revenue' && <QuickRevenueModal onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('revenues', d); setQuickAction(null); }} />}
       {quickAction === 'expense' && <QuickExpenseModal uploadReceipt={uploadReceipt} onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('expenses', d); setQuickAction(null); }} />}
       {quickAction === 'equity' && <QuickEquityModal onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('equities', d); setQuickAction(null); }} />}
 
-      <header className="bg-white/80 backdrop-blur-xl border-b border-zinc-200/60 sticky top-0 z-30 no-print transition-all">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-          <div className="flex justify-between items-end mb-4">
+      <header className="bg-white/70 backdrop-blur-xl border-b border-zinc-200/60 sticky top-0 z-30 no-print transition-all">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+          <div className="flex justify-between items-end mb-5">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-900">APEX Performance</h1>
-              <p className="text-[13px] font-medium tracking-widest uppercase text-zinc-400 mt-1">Enterprise Ledger</p>
+              <h1 className="text-2xl font-extrabold tracking-tight text-zinc-900">APEX Performance</h1>
+              <p className="text-[11px] font-bold tracking-widest uppercase text-zinc-400 mt-1">Enterprise Ledger</p>
             </div>
           </div>
-          <div className="flex overflow-x-auto hide-scrollbar gap-2">
+          <div className="flex overflow-x-auto hide-scrollbar gap-1 bg-zinc-100/50 p-1.5 rounded-full border border-zinc-200/50 w-max mb-1">
             <TabButton id="dashboard" icon={LayoutDashboard} label="Command Center" />
             <TabButton id="analytics" icon={MapIcon} label="Analytics" />
             <TabButton id="revenue" icon={DollarSign} label="Revenue" />
@@ -363,7 +447,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 print-no-padding">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 print-no-padding relative z-10">
         {activeTab === 'dashboard' && (
           <div className="space-y-8 animate-in fade-in duration-500 slide-in-from-bottom-4">
             
@@ -384,55 +468,59 @@ export default function App() {
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h2 className="text-2xl font-bold tracking-tight text-zinc-900">Overview</h2>
-              <div className="flex space-x-2">
-                <button onClick={() => setQuickAction('revenue')} className="bg-zinc-900 hover:bg-zinc-800 text-white px-5 py-2.5 rounded-full text-sm font-semibold flex items-center transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5"><Plus size={16} className="mr-1.5"/> Log Sale</button>
-                <button onClick={() => setQuickAction('expense')} className="bg-white border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 text-zinc-800 px-5 py-2.5 rounded-full text-sm font-semibold flex items-center transition-all shadow-sm hover:-translate-y-0.5"><Receipt size={16} className="mr-1.5 text-zinc-400"/> Expense</button>
-                <button onClick={() => setQuickAction('equity')} className="bg-white border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 text-zinc-800 px-5 py-2.5 rounded-full text-sm font-semibold flex items-center transition-all shadow-sm hover:-translate-y-0.5"><ArrowRightLeft size={16} className="mr-1.5 text-zinc-400"/> Transfer</button>
+              <div className="flex space-x-3">
+                <MagneticButton onClick={() => setQuickAction('revenue')} className="bg-zinc-900 text-white px-5 py-2.5 rounded-full text-sm font-semibold flex items-center shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)]"><Plus size={16} className="mr-1.5"/> Log Sale</MagneticButton>
+                <MagneticButton onClick={() => setQuickAction('expense')} className="bg-white border border-zinc-200 text-zinc-800 px-5 py-2.5 rounded-full text-sm font-semibold flex items-center shadow-sm"><Receipt size={16} className="mr-1.5 text-zinc-400"/> Expense</MagneticButton>
+                <MagneticButton onClick={() => setQuickAction('equity')} className="bg-white border border-zinc-200 text-zinc-800 px-5 py-2.5 rounded-full text-sm font-semibold flex items-center shadow-sm"><ArrowRightLeft size={16} className="mr-1.5 text-zinc-400"/> Transfer</MagneticButton>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <DashboardCard title="Total Revenue" amount={totalGrossRevenue} subtitle="Gross lifetime sales" color="zinc" />
-              <DashboardCard title="Platform Fees" amount={totalPlatformFees} subtitle="eBay, Ads, & Shipping" color="zinc" isNegative />
-              <DashboardCard title="Operating Expenses" amount={totalOperatingExpenses} subtitle="Printers, tools, gear" color="zinc" isNegative />
+              <DashboardCard title="Total Revenue" amount={totalGrossRevenue} subtitle="Gross lifetime sales" color="zinc" formatCurrency={formatCurrency} />
+              <DashboardCard title="Platform Fees" amount={totalPlatformFees} subtitle="eBay, Ads, & Shipping" color="zinc" isNegative formatCurrency={formatCurrency} />
+              <DashboardCard title="Operating Expenses" amount={totalOperatingExpenses} subtitle="Printers, tools, gear" color="zinc" isNegative formatCurrency={formatCurrency} />
               
               <div className="col-span-1 md:col-span-2 lg:col-span-3 h-px bg-zinc-200/60 my-2"></div>
               
-              <DashboardCard title="Net Profit" amount={netProfit} subtitle="True enterprise earnings" color={netProfit >= 0 ? "emerald" : "zinc"} highlight />
-              <DashboardCard title="Tax Reserve (25%)" amount={taxReserve} subtitle="Set aside for IRS & Iowa" color="zinc" />
-              <DashboardCard title="Amex Checking" amount={estimatedCashBalance} subtitle="Cash balance (since Apr 29)" color="blue" highlight />
+              <DashboardCard title="Net Profit" amount={netProfit} subtitle="True enterprise earnings" color={netProfit >= 0 ? "emerald" : "zinc"} highlight formatCurrency={formatCurrency} />
+              <DashboardCard title="Tax Reserve (25%)" amount={taxReserve} subtitle="Set aside for IRS & Iowa" color="zinc" formatCurrency={formatCurrency} />
+              <DashboardCard title="Amex Checking" amount={estimatedCashBalance} subtitle="Cash balance (since Apr 29)" color="blue" formatCurrency={formatCurrency} />
               
-              <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] group">
+              <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] group">
                 <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center"><Target size={14} className="mr-2"/> Mfg. Efficiency</h3>
-                <div className="text-4xl font-semibold tracking-tighter mt-3 text-emerald-600">{formatCurrency(avgProfitPerUnit)}</div>
+                <div className="text-4xl font-bold tracking-tighter mt-3 bg-clip-text text-transparent bg-gradient-to-br from-emerald-500 to-emerald-700">
+                  <AnimatedNumber value={avgProfitPerUnit} formatCurrency={formatCurrency} />
+                </div>
                 <p className="text-sm font-medium text-zinc-400 mt-2">Avg true profit per unit</p>
                 <div className="mt-4 pt-4 border-t border-zinc-100 flex justify-between items-center">
                   <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Total Units</span>
-                  <span className="font-bold text-zinc-900 bg-zinc-100 px-3 py-1 rounded-full text-xs">{totalUnitsSold}</span>
+                  <span className="font-bold text-zinc-900 bg-zinc-100 px-3 py-1 rounded-full text-xs"><AnimatedNumber value={totalUnitsSold} isInt={true} /></span>
                 </div>
               </div>
 
-              <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+              <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] group">
                 <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center"><ShieldCheck size={14} className="mr-2"/> The Tax Shield</h3>
-                <div className="text-4xl font-semibold tracking-tighter mt-3 text-blue-600">{formatCurrency(taxShield)}</div>
+                <div className="text-4xl font-bold tracking-tighter mt-3 bg-clip-text text-transparent bg-gradient-to-br from-blue-500 to-indigo-600">
+                  <AnimatedNumber value={taxShield} formatCurrency={formatCurrency} />
+                </div>
                 <p className="text-sm font-medium text-zinc-400 mt-2 leading-tight">Total cash value of legal deductions (Expenses + Mileage)</p>
               </div>
 
-              <div className={`rounded-3xl border p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all ${drawsGolf > 0 || isGolfUnlocked ? 'bg-[#f0fdf4] border-emerald-100' : 'bg-zinc-50 border-zinc-200/60'}`}>
+              <div className={`rounded-3xl border p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center transition-all ${drawsGolf > 0 || isGolfUnlocked ? 'bg-gradient-to-br from-[#f0fdf4] to-white border-emerald-100' : 'bg-white/80 backdrop-blur-md border-zinc-100'}`}>
                 <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2 flex items-center justify-center">Golf Fund</h3>
                 <div className="text-center">
-                  <div className={`text-4xl font-semibold tracking-tighter mt-1 ${drawsGolf > 0 || isGolfUnlocked ? 'text-emerald-600' : 'text-zinc-400'}`}>
-                    {formatCurrency(drawsGolf)}
+                  <div className={`text-4xl font-bold tracking-tighter mt-1 ${drawsGolf > 0 || isGolfUnlocked ? 'bg-clip-text text-transparent bg-gradient-to-br from-emerald-500 to-emerald-700' : 'text-zinc-400'}`}>
+                    <AnimatedNumber value={drawsGolf} formatCurrency={formatCurrency} />
                   </div>
                   <span className="block text-xs font-medium text-zinc-400 mt-2">Total Accounted For / Withdrawn</span>
                 </div>
-                <div className={`w-full mt-5 border-t pt-4 ${isGolfUnlocked ? 'border-emerald-200/60' : 'border-zinc-200'}`}>
+                <div className={`w-full mt-5 border-t pt-4 ${isGolfUnlocked ? 'border-emerald-200/60' : 'border-zinc-100'}`}>
                 {!isGolfUnlocked ? (
                   <p className="text-xs font-medium text-zinc-500 text-center">Generate <span className="font-bold text-zinc-800">{formatCurrency(Math.max(0, initialGoal - safeCash))}</span> more safe profit to unlock</p>
                 ) : (
                   <div className="flex justify-between items-center w-full">
                     <span className="text-xs font-bold uppercase tracking-wider text-emerald-800/60">Available:</span>
-                    <span className="font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full text-xs">{formatCurrency(availableGolfFund)}</span>
+                    <span className="font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full text-xs shadow-sm">{formatCurrency(availableGolfFund)}</span>
                   </div>
                 )}
                 </div>
@@ -469,12 +557,12 @@ function QuickRevenueModal({ onClose, onAdd }) {
   const handleSubmit = (e) => { e.preventDefault(); if(formData.gross) onAdd(formData); };
   return (
     <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-zinc-200/50">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
+        <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-white/50 backdrop-blur-md">
           <h2 className="text-lg font-bold tracking-tight text-zinc-900 flex items-center">Log New Sale</h2>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full"><X size={18}/></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
           <div className="grid grid-cols-2 gap-4">
             <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
             <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">State (e.g. AZ)</label><input type="text" maxLength="2" className={modalInputStyle} placeholder="Optional" value={formData.state} onChange={e=>setFormData({...formData, state:e.target.value.toUpperCase()})}/></div>
@@ -489,7 +577,7 @@ function QuickRevenueModal({ onClose, onAdd }) {
             <div><label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Ad Fee</label><input type="number" step="0.01" className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm font-medium outline-none focus:border-zinc-900" value={formData.ad} onChange={e=>setFormData({...formData, ad:e.target.value})}/></div>
             <div><label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Label Cost</label><input type="number" step="0.01" className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm font-medium outline-none focus:border-zinc-900" value={formData.shipping} onChange={e=>setFormData({...formData, shipping:e.target.value})}/></div>
           </div>
-          <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all hover:shadow-lg hover:-translate-y-0.5">Save Record</button>
+          <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)] hover:-translate-y-0.5">Save Record</button>
         </form>
       </div>
     </div>
@@ -514,12 +602,12 @@ function QuickExpenseModal({ onClose, onAdd, uploadReceipt }) {
 
   return (
     <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-zinc-200/50">
+      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
         <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
           <h2 className="text-lg font-bold tracking-tight text-zinc-900">Log Expense</h2>
           <button onClick={onClose} disabled={isUploading} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full"><X size={18}/></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
           <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
           <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
           <div className="grid grid-cols-2 gap-4">
@@ -530,7 +618,7 @@ function QuickExpenseModal({ onClose, onAdd, uploadReceipt }) {
             <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Attach Vault Receipt</label>
             <input type="file" accept="image/*,application/pdf" onChange={e=>setFile(e.target.files[0])} className="w-full text-sm font-medium text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:uppercase file:tracking-wider file:bg-zinc-200 file:text-zinc-700 hover:file:bg-zinc-300 transition-colors cursor-pointer" />
           </div>
-          <button type="submit" disabled={isUploading} className="w-full bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-400 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all hover:shadow-lg hover:-translate-y-0.5 flex justify-center items-center">
+          <button type="submit" disabled={isUploading} className="w-full bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-400 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)] hover:-translate-y-0.5 flex justify-center items-center">
             {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Vault...</> : "Save Expense"}
           </button>
         </form>
@@ -545,17 +633,17 @@ function QuickEquityModal({ onClose, onAdd }) {
   const handleSubmit = (e) => { e.preventDefault(); if(formData.amount) onAdd(formData); };
   return (
     <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-zinc-200/50">
+      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
         <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
           <h2 className="text-lg font-bold tracking-tight text-zinc-900">Transfer Funds</h2>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full"><X size={18}/></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
           <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
           <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
           <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
           <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
-          <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all hover:shadow-lg hover:-translate-y-0.5">Log Transfer</button>
+          <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)] hover:-translate-y-0.5">Log Transfer</button>
         </form>
       </div>
     </div>
@@ -636,8 +724,8 @@ function Analytics({ revenues, expenses, formatCurrency }) {
   }, []);
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow">
+    <div className="space-y-8 animate-in fade-in">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow">
         <div className="flex items-center justify-between mb-8">
           <h3 className="font-bold text-zinc-900 tracking-tight text-lg flex items-center">Customer Geospatial Tile Map</h3>
           <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest bg-zinc-50 border border-zinc-100 px-3 py-1.5 rounded-full">Hover to inspect</div>
@@ -650,7 +738,7 @@ function Analytics({ revenues, expenses, formatCurrency }) {
                 if (!cell) return <div key={i} className="aspect-square" />;
                 const rev = stateData[cell] || 0;
                 const intensity = maxStateRevenue > 0 ? rev / maxStateRevenue : 0;
-                const bgColor = rev > 0 ? `rgba(9, 9, 11, ${Math.max(0.1, intensity)})` : '#ffffff'; // Using deep zinc for heatmap
+                const bgColor = rev > 0 ? `rgba(9, 9, 11, ${Math.max(0.08, intensity)})` : '#ffffff'; 
                 const textColor = intensity > 0.4 ? '#ffffff' : '#71717a';
                 const borderColor = rev > 0 ? 'border-transparent' : 'border-zinc-200';
                 
@@ -690,7 +778,7 @@ function Analytics({ revenues, expenses, formatCurrency }) {
       </div>
 
       <div className="grid grid-cols-1 gap-8">
-        <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow flex flex-col">
+        <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow flex flex-col">
           <div className="flex items-center justify-between mb-8">
             <h3 className="font-bold text-zinc-900 tracking-tight text-lg">Cash Flow</h3>
             <div className="flex items-center space-x-4 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
@@ -708,7 +796,6 @@ function Analytics({ revenues, expenses, formatCurrency }) {
                 return (
                   <div key={data.month} className="flex flex-col items-center flex-1 min-w-[50px] group relative">
                     
-                    {/* Unified Multi-Data Tooltip */}
                     <div className="absolute bottom-[40%] left-1/2 transform -translate-x-1/2 bg-zinc-900/95 backdrop-blur-sm border border-zinc-800 text-white px-5 py-4 rounded-2xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-4 group-hover:translate-y-0 whitespace-nowrap z-50 pointer-events-none flex flex-col gap-2">
                       <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1 border-b border-zinc-800 pb-2">{monthName} '{year.slice(2)}</div>
                       <div className="flex justify-between items-center gap-6 text-sm">
@@ -736,7 +823,7 @@ function Analytics({ revenues, expenses, formatCurrency }) {
             )}
           </div>
         </div>
-        <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow flex flex-col">
+        <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow flex flex-col">
           <h3 className="font-bold text-zinc-900 tracking-tight text-lg mb-8">Expenses</h3>
           {categoryData.length === 0 ? <div className="flex-1 flex items-center justify-center text-zinc-400 text-sm font-medium">No expenses logged yet.</div> : (
             <div className="flex flex-col sm:flex-row items-center justify-center flex-1 gap-10">
@@ -774,11 +861,11 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
   const addRow = (e) => { e.preventDefault(); if (!formData.qty) return; onAdd(formData); setFormData({ ...formData, qty: '' }); };
 
   const StockCard = ({ title, amount, unit, isWarning, daysRemaining, velocity }) => (
-    <div className={`rounded-3xl border p-6 flex flex-col justify-center transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${isWarning ? 'bg-amber-50/50 border-amber-200/60' : 'bg-white border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]'}`}>
+    <div className={`rounded-3xl border p-6 flex flex-col justify-center transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${isWarning ? 'bg-amber-50/50 border-amber-200/60' : 'bg-white/80 backdrop-blur-md border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]'}`}>
       <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center justify-between">
         {title} {isWarning && <AlertTriangle size={14} className="text-amber-500" />}
       </h3>
-      <div className={`text-3xl font-semibold tracking-tighter mt-3 ${isWarning ? 'text-amber-700' : 'text-zinc-900'}`}>{Number(amount).toLocaleString()} <span className="text-sm font-medium tracking-normal text-zinc-400 ml-1">{unit}</span></div>
+      <div className={`text-3xl font-bold tracking-tighter mt-3 ${isWarning ? 'text-amber-700' : 'text-zinc-900'}`}>{Number(amount).toLocaleString()} <span className="text-sm font-medium tracking-normal text-zinc-400 ml-1">{unit}</span></div>
       {velocity > 0 && (
         <div className={`text-[11px] mt-3 font-bold uppercase tracking-wider ${daysRemaining <= 7 ? 'text-amber-600' : 'text-zinc-400'}`}>
           {daysRemaining > 0 && daysRemaining !== Infinity ? `~${daysRemaining} days remaining` : (daysRemaining === 0 ? 'Out of stock' : 'Adequate supply')}
@@ -789,14 +876,14 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
 
   return (
     <div className="space-y-8 animate-in fade-in">
-      <div className={`rounded-[2.5rem] p-10 flex flex-col sm:flex-row sm:items-center justify-between relative overflow-hidden transition-all duration-500 ${buildableUnits < 10 ? 'bg-amber-100 text-amber-900' : 'bg-zinc-900 text-white shadow-2xl shadow-zinc-900/20'}`}>
+      <div className={`rounded-[2.5rem] p-10 flex flex-col sm:flex-row sm:items-center justify-between relative overflow-hidden transition-all duration-500 shadow-xl ${buildableUnits < 10 ? 'bg-amber-100 text-amber-900' : 'bg-zinc-900 text-white shadow-zinc-900/20'}`}>
         <div className="absolute top-0 right-0 p-8 opacity-5"><Package size={200} /></div>
         <div className="z-10">
           <h2 className="text-2xl font-bold tracking-tight">Production Capacity</h2>
           <p className={`text-sm font-medium mt-2 ${buildableUnits < 10 ? 'text-amber-700' : 'text-zinc-400'}`}>Limited by lowest raw material</p>
         </div>
         <div className="z-10 mt-6 sm:mt-0 text-left sm:text-right">
-          <div className="text-7xl font-semibold tracking-tighter">{buildableUnits.toLocaleString()}</div>
+          <div className="text-7xl font-semibold tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-white to-zinc-400"><AnimatedNumber value={buildableUnits} isInt={true} /></div>
           <div className={`text-[11px] font-bold uppercase tracking-widest mt-2 ${buildableUnits < 10 ? 'text-amber-700' : 'text-zinc-400'}`}>Buildable Units</div>
         </div>
       </div>
@@ -812,17 +899,17 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
         <StockCard title="Washers" amount={currentStock.washers} unit="sets" isWarning={runoutDays.washers <= 7} daysRemaining={runoutDays.washers} velocity={dailySalesVelocity} />
       </div>
 
-      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
         <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Material Restock</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
           <select className={`${inlineInputStyle} sm:col-span-2`} value={formData.material} onChange={e => setFormData({...formData, material: e.target.value})}>{materials.map(m => <option key={m} value={m}>{m}</option>)}</select>
           <input type="number" placeholder="Quantity Added" className={inlineInputStyle} value={formData.qty} onChange={e => setFormData({...formData, qty: e.target.value})} required />
-          <button type="submit" className="sm:col-span-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5"><Plus size={18} className="mr-2" /> Add to Warehouse</button>
+          <button type="submit" className="sm:col-span-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 shadow-md"><Plus size={18} className="mr-2" /> Add to Warehouse</button>
         </form>
       </div>
 
-      <div className="bg-white rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
         <div className="p-6 border-b border-zinc-100"><h3 className="font-bold tracking-tight text-zinc-900">Restock History</h3></div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
@@ -856,12 +943,14 @@ function ProgressCard({ drawsRecoup, initialGoal, remainingToRecoup, formatCurre
   const percentComplete = initialGoal > 0 ? Math.min(100, (drawsRecoup / initialGoal) * 100) : 100;
 
   return (
-    <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center relative group hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all">
+    <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center relative group hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all">
       <div className="absolute top-6 right-6">
         {!isEditing && <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-zinc-900 transition-colors p-1 opacity-0 group-hover:opacity-100" title="Edit Initial Goal"><Edit2 size={16} /></button>}
       </div>
       <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Remaining to Recoup</h3>
-      <div className="text-4xl font-semibold tracking-tighter text-zinc-900 mb-2">{formatCurrency(remainingToRecoup)}</div>
+      <div className="text-4xl font-bold tracking-tighter text-zinc-900 mb-2">
+        <AnimatedNumber value={remainingToRecoup} formatCurrency={formatCurrency} />
+      </div>
       <div className="w-full bg-zinc-100 rounded-full h-1.5 mt-5 overflow-hidden"><div className="bg-zinc-900 h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${percentComplete}%` }}></div></div>
       {isEditing ? (
         <div className="flex items-center space-x-3 mt-5 bg-zinc-50 p-2 rounded-xl border border-zinc-200">
@@ -874,12 +963,15 @@ function ProgressCard({ drawsRecoup, initialGoal, remainingToRecoup, formatCurre
   );
 }
 
-function DashboardCard({ title, amount, subtitle, color, isNegative, highlight }) {
+function DashboardCard({ title, amount, subtitle, color, isNegative, highlight, formatCurrency }) {
   const colorMap = { blue: 'text-blue-600', red: 'text-zinc-900', emerald: 'text-emerald-600', zinc: 'text-zinc-900', indigo: 'text-zinc-900' };
   return (
-    <div className={`bg-white rounded-3xl p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${highlight ? 'ring-1 ring-zinc-200/60' : 'border border-zinc-100'}`}>
+    <div className={`bg-white/80 backdrop-blur-md rounded-3xl p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${highlight ? 'ring-1 ring-zinc-200/60' : 'border border-zinc-100'}`}>
       <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{title}</h3>
-      <div className={`text-4xl font-semibold tracking-tighter mt-3 ${colorMap[color]}`}>{isNegative && amount > 0 ? '-' : ''}{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)}</div>
+      <div className={`text-4xl font-bold tracking-tighter mt-3 ${colorMap[color]}`}>
+        {isNegative && amount > 0 ? '-' : ''}
+        <AnimatedNumber value={amount} formatCurrency={formatCurrency} />
+      </div>
       <p className="text-sm font-medium text-zinc-400 mt-2">{subtitle}</p>
     </div>
   );
@@ -953,7 +1045,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
     <div className="space-y-8 animate-in fade-in">
       {importPreview && (
         <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-[2rem] shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-zinc-200/50">
+          <div className="bg-white rounded-[2rem] shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-spring-in border border-zinc-200/50">
             <div className="p-8 border-b border-zinc-100 flex justify-between items-center">
               <div><h2 className="text-xl font-bold tracking-tight text-zinc-900">Review Import</h2></div>
               <button onClick={() => setImportPreview(null)} className="text-zinc-400 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full transition-colors"><X size={20}/></button>
@@ -979,13 +1071,13 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
             </div>
             <div className="p-6 border-t border-zinc-100 bg-white flex justify-end space-x-3">
               <button onClick={() => setImportPreview(null)} className="px-6 py-3 rounded-xl text-zinc-500 hover:bg-zinc-100 font-semibold transition-colors">Cancel</button>
-              <button onClick={confirmImport} className="px-8 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-semibold flex items-center transition-all hover:-translate-y-0.5"><Check size={18} className="mr-2"/> Save {importPreview.length} Orders</button>
+              <button onClick={confirmImport} className="px-8 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-semibold flex items-center transition-all hover:-translate-y-0.5 shadow-md"><Check size={18} className="mr-2"/> Save {importPreview.length} Orders</button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
         <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Manual Sale</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-8 gap-4">
           <input type="date" className={`${inlineInputStyle} col-span-1`} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
@@ -996,11 +1088,11 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
           <input type="number" step="0.01" placeholder="eBay Fee" className={inlineInputStyle} value={formData.ebay} onChange={e => setFormData({...formData, ebay: e.target.value})} />
           <input type="number" step="0.01" placeholder="Ad Fee" className={inlineInputStyle} value={formData.ad} onChange={e => setFormData({...formData, ad: e.target.value})} />
           <input type="number" step="0.01" placeholder="Ship ($)" className={inlineInputStyle} value={formData.shipping} onChange={e => setFormData({...formData, shipping: e.target.value})} />
-          <button type="submit" className="md:col-span-8 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5"><Plus size={18} className="mr-2" /> Add Record</button>
+          <button type="submit" className="md:col-span-8 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 shadow-md"><Plus size={18} className="mr-2" /> Add Record</button>
         </form>
       </div>
 
-      <div className="bg-white rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
         <div className="p-6 border-b border-zinc-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
             <h3 className="font-bold tracking-tight text-zinc-900 text-lg">Sales Ledger</h3>
@@ -1008,8 +1100,8 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
           </div>
           <div className="flex space-x-3">
             <input type="file" accept=".csv" id="csv-upload" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
-            <button onClick={() => fileInputRef.current.click()} className="text-xs font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Upload size={14} className="mr-2" /> Import CSV</button>
-            <button onClick={handleExport} className="text-xs font-bold uppercase tracking-widest text-blue-600 hover:text-blue-800 flex items-center transition-colors bg-blue-50 border border-blue-100 px-4 py-2 rounded-full hover:bg-blue-100"><Download size={14} className="mr-2" /> Export</button>
+            <button onClick={() => fileInputRef.current.click()} className="text-[11px] font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Upload size={14} className="mr-2" /> Import CSV</button>
+            <button onClick={handleExport} className="text-[11px] font-bold uppercase tracking-widest text-blue-600 hover:text-blue-800 flex items-center transition-colors bg-blue-50 border border-blue-100 px-4 py-2 rounded-full hover:bg-blue-100"><Download size={14} className="mr-2" /> Export</button>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -1112,7 +1204,7 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency, u
 
   return (
     <div className="space-y-8 animate-in fade-in">
-      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
         <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Expense to Vault</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-5 gap-4">
           <input type="date" className={`${inlineInputStyle} col-span-1`} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
@@ -1120,16 +1212,16 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency, u
           <select className={`${inlineInputStyle} col-span-1`} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
           <input type="number" step="0.01" placeholder="Amount ($)" className={`${inlineInputStyle} col-span-1`} value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
           <input type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files[0])} className="col-span-1 text-[10px] uppercase font-bold tracking-wider text-zinc-500 file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:uppercase file:tracking-wider file:font-bold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 transition-colors cursor-pointer" />
-          <button type="submit" disabled={isUploading} className="sm:col-span-5 bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-300 text-white font-semibold py-3.5 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2">
+          <button type="submit" disabled={isUploading} className="sm:col-span-5 bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-300 text-white font-semibold py-3.5 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2 shadow-md">
              {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading to Vault...</> : <><Plus size={18} className="mr-2" /> Save to Ledger & Vault</>}
           </button>
         </form>
       </div>
 
-      <div className="bg-white rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
         <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
           <h3 className="font-bold tracking-tight text-zinc-900 text-lg">Audit-Proof Ledger</h3>
-          <button onClick={handleExport} className="text-xs font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
+          <button onClick={handleExport} className="text-[11px] font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
@@ -1208,7 +1300,7 @@ function OwnerEquity({ equities, initialGoal, onAdd, onUpdate, onDelete, formatC
 
   return (
     <div className="space-y-8 animate-in fade-in">
-      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
         <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Record Transfer</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
@@ -1217,14 +1309,14 @@ function OwnerEquity({ equities, initialGoal, onAdd, onUpdate, onDelete, formatC
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <input type="number" step="0.01" placeholder="Amount ($)" className={inlineInputStyle} value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
-          <button type="submit" className="sm:col-span-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2"><Plus size={18} className="mr-2" /> Log Transaction</button>
+          <button type="submit" className="sm:col-span-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2 shadow-md"><Plus size={18} className="mr-2" /> Log Transaction</button>
         </form>
       </div>
 
-      <div className="bg-white rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
         <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
           <h3 className="font-bold tracking-tight text-zinc-900 text-lg">Transaction History</h3>
-          <button onClick={handleExport} className="text-xs font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
+          <button onClick={handleExport} className="text-[11px] font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
@@ -1296,20 +1388,20 @@ function MileageLog({ mileages, onAdd, onUpdate, onDelete, formatCurrency }) {
 
   return (
     <div className="space-y-8 animate-in fade-in">
-      <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
         <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Track Miles</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
           <input type="text" placeholder="Trip Description" className={inlineInputStyle} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
           <input type="number" step="0.1" placeholder="Total Miles" className={inlineInputStyle} value={formData.miles} onChange={e => setFormData({...formData, miles: e.target.value})} required />
-          <button type="submit" className="sm:col-span-3 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2"><Plus size={18} className="mr-2" /> Log Miles</button>
+          <button type="submit" className="sm:col-span-3 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2 shadow-md"><Plus size={18} className="mr-2" /> Log Miles</button>
         </form>
       </div>
 
-      <div className="bg-white rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
         <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
           <h3 className="font-bold tracking-tight text-zinc-900 text-lg">Trip Log</h3>
-          <button onClick={handleExport} className="text-xs font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
+          <button onClick={handleExport} className="text-[11px] font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
@@ -1318,7 +1410,7 @@ function MileageLog({ mileages, onAdd, onUpdate, onDelete, formatCurrency }) {
                 <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Miles" sortKey="miles" currentSort={sortConfig} requestSort={requestSort} alignRight />
-                <SortableHeader label="Deduction" sortKey="deduction" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-zinc-500" />
+                <SortableHeader label="Deduction Value" sortKey="deduction" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-zinc-500" />
                 <th className="p-4"></th>
               </tr>
             </thead>
@@ -1340,7 +1432,7 @@ function MileageLog({ mileages, onAdd, onUpdate, onDelete, formatCurrency }) {
                     <td className="px-6 py-4 font-medium text-zinc-500">{m.date}</td>
                     <td className="px-6 py-4 font-semibold text-zinc-800">{m.desc}</td>
                     <td className="px-6 py-4 text-right font-semibold text-zinc-900">{m.miles} mi</td>
-                    <td className="px-6 py-4 text-right font-bold text-zinc-500 tracking-tight">{formatCurrency(m.deduction)}</td>
+                    <td className="px-6 py-4 text-right font-bold text-blue-600 tracking-tight">{formatCurrency(m.deduction)}</td>
                     <td className="px-6 py-4 text-right space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => startEdit(m)} className="text-zinc-400 hover:text-zinc-900"><Edit2 size={16}/></button>
                       <button onClick={() => onDelete(m.id)} className="text-zinc-300 hover:text-red-500"><Trash2 size={16}/></button>
@@ -1362,7 +1454,7 @@ function Manufacturing({ cogs, onUpdate, costPerTrainer, blackPetgCostPerGram, w
   return (
     <div className="space-y-6 animate-in fade-in">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+        <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
           <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-8">Supply Variables</h2>
           <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-2 hide-scrollbar">
             <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Raw Materials</h3>
@@ -1433,7 +1525,7 @@ function TaxSummary({ revenues, expenses, mileages, formatCurrency }) {
 
   return (
     <div className="space-y-6 animate-in fade-in print-area max-w-4xl mx-auto">
-      <div className="bg-white rounded-3xl border border-zinc-100 p-10 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-10 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
         
         <div className="flex items-center justify-between mb-10 pb-6 border-b border-zinc-100">
           <div>
@@ -1441,7 +1533,7 @@ function TaxSummary({ revenues, expenses, mileages, formatCurrency }) {
             <p className="text-sm font-medium text-zinc-400 mt-1">Apex Performance Concepts LLC</p>
           </div>
           <div className="text-right flex flex-col items-end">
-            <button onClick={() => window.print()} className="no-print mb-4 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-wider py-2.5 px-5 rounded-full flex items-center transition-all hover:-translate-y-0.5"><Printer size={14} className="mr-2"/> Print PDF</button>
+            <button onClick={() => window.print()} className="no-print mb-4 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-wider py-2.5 px-5 rounded-full flex items-center transition-all hover:-translate-y-0.5 shadow-md"><Printer size={14} className="mr-2"/> Print PDF</button>
             <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Tax Year</p>
             <p className="text-xl font-bold tracking-tight text-zinc-900">2026</p>
           </div>
@@ -1467,7 +1559,7 @@ function TaxSummary({ revenues, expenses, mileages, formatCurrency }) {
         </div>
 
         <div className="mb-6">
-          <div className={`p-6 rounded-2xl flex justify-between items-center border ${netProfit >= 0 ? 'bg-emerald-50/50 border-emerald-200/60 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
+          <div className={`p-6 rounded-2xl flex justify-between items-center border ${netProfit >= 0 ? 'bg-emerald-50/50 border-emerald-200/60 text-emerald-900 shadow-sm' : 'bg-red-50 border-red-200 text-red-900'}`}>
             <div className="flex items-center"><span className="w-16 text-[10px] uppercase tracking-widest font-bold opacity-50">Line 31</span><span className="font-bold text-lg tracking-tight">Net profit (or loss)</span></div>
             <span className="text-3xl font-semibold tracking-tighter">{formatCurrency(netProfit)}</span>
           </div>
@@ -1480,6 +1572,16 @@ function TaxSummary({ revenues, expenses, mileages, formatCurrency }) {
 const style = document.createElement('style');
 style.textContent = `
   .hide-scrollbar::-webkit-scrollbar { display: none; } .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  
+  @keyframes spring-in {
+    0% { transform: scale(0.9); opacity: 0; }
+    60% { transform: scale(1.02); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .animate-spring-in {
+    animation: spring-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
+  
   @media print {
     .no-print { display: none !important; }
     body { background-color: white !important; -webkit-print-color-adjust: exact; }
