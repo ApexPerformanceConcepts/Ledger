@@ -68,7 +68,6 @@ const parseCSV = (text) => {
   return rows;
 };
 
-// --- CUSTOM HOOK FOR SORTING ---
 const useSortableData = (items, defaultKey = 'date') => {
   const [sortConfig, setSortConfig] = useState({ key: defaultKey, direction: 'descending' });
   const sortedItems = useMemo(() => {
@@ -124,7 +123,8 @@ export default function App() {
   
   const [appSettings, setAppSettings] = useState({ initialInvestment: 1219.00 });
   const [cogs, setCogs] = useState({
-    spoolCost: 20.00, gramsUsed: 250, 
+    blackSpoolCost: 20.00, blackGramsUsed: 533, 
+    whiteSpoolCost: 20.00, whiteGramsUsed: 11,
     concreteCost: 0.15, lbsUsed: 5, 
     boxCost: 1.25, bubbleWrapCost: 0.30,
     screwsCost: 0.10, insertsCost: 0.15, washersCost: 0.05
@@ -156,7 +156,19 @@ export default function App() {
     const unsubMiles = onSnapshot(getColRef('mileages'), (snap) => setMileages(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
     const unsubRestocks = onSnapshot(getColRef('restocks'), (snap) => setRestocks(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
     
-    const unsubCogs = onSnapshot(getDocRef('settings', 'cogs'), (docSnap) => { if (docSnap.exists()) setCogs({ ...cogs, ...docSnap.data() }); }, console.error);
+    const unsubCogs = onSnapshot(getDocRef('settings', 'cogs'), (docSnap) => { 
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setCogs(prev => ({ 
+          ...prev, ...data,
+          // Legacy mapping just in case old cogs variables exist
+          blackSpoolCost: data.blackSpoolCost ?? data.spoolCost ?? 20.00,
+          blackGramsUsed: data.blackGramsUsed ?? (data.gramsUsed === 250 ? 533 : data.gramsUsed) ?? 533,
+          whiteSpoolCost: data.whiteSpoolCost ?? 20.00,
+          whiteGramsUsed: data.whiteGramsUsed ?? 11,
+        }));
+      } 
+    }, console.error);
     const unsubSettings = onSnapshot(getDocRef('settings', 'app'), (docSnap) => { if (docSnap.exists()) setAppSettings(docSnap.data()); }, console.error);
 
     return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubRestocks(); unsubCogs(); unsubSettings(); };
@@ -207,8 +219,18 @@ export default function App() {
   };
 
   // --- CALCULATIONS & PREDICTIVE SUPPLY CHAIN ---
-  const petgCostPerGram = cogs.spoolCost / 1000;
-  const costPerTrainer = (petgCostPerGram * cogs.gramsUsed) + (cogs.concreteCost * cogs.lbsUsed) + Number(cogs.boxCost || 0) + Number(cogs.bubbleWrapCost || 0) + Number(cogs.screwsCost || 0) + Number(cogs.insertsCost || 0) + Number(cogs.washersCost || 0);
+  const blackPetgCostPerGram = (cogs.blackSpoolCost || 20) / 1000;
+  const whitePetgCostPerGram = (cogs.whiteSpoolCost || 20) / 1000;
+  
+  const costPerTrainer = 
+    (blackPetgCostPerGram * (cogs.blackGramsUsed || 533)) + 
+    (whitePetgCostPerGram * (cogs.whiteGramsUsed || 11)) + 
+    ((cogs.concreteCost || 0.15) * (cogs.lbsUsed || 5)) + 
+    Number(cogs.boxCost || 0) + 
+    Number(cogs.bubbleWrapCost || 0) + 
+    Number(cogs.screwsCost || 0) + 
+    Number(cogs.insertsCost || 0) + 
+    Number(cogs.washersCost || 0);
 
   // Revenue & Profit Math
   const totalUnitsSold = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.qty || 1), 0), [revenues]);
@@ -260,7 +282,9 @@ export default function App() {
   }, [restocks]);
 
   const currentStock = useMemo(() => ({
-    petg: (restockTotals['PETG (grams)'] || 0) - (totalUnitsSold * (cogs.gramsUsed || 250)),
+    // Note: Legacy "PETG (grams)" gets automatically added into Black PETG to save their old data
+    blackPetg: ((restockTotals['Black PETG (grams)'] || 0) + (restockTotals['PETG (grams)'] || 0)) - (totalUnitsSold * (cogs.blackGramsUsed || 533)),
+    whitePetg: (restockTotals['White PETG (grams)'] || 0) - (totalUnitsSold * (cogs.whiteGramsUsed || 11)),
     concrete: (restockTotals['Concrete (lbs)'] || 0) - (totalUnitsSold * (cogs.lbsUsed || 5)),
     boxes: (restockTotals['Boxes (qty)'] || 0) - totalUnitsSold,
     wrap: (restockTotals['Bubble Wrap (qty)'] || 0) - totalUnitsSold,
@@ -270,14 +294,16 @@ export default function App() {
   }), [restockTotals, totalUnitsSold, cogs]);
 
   const buildableUnits = useMemo(() => Math.floor(Math.min(
-    cogs.gramsUsed > 0 ? Math.max(0, currentStock.petg / cogs.gramsUsed) : Infinity,
+    cogs.blackGramsUsed > 0 ? Math.max(0, currentStock.blackPetg / cogs.blackGramsUsed) : Infinity,
+    cogs.whiteGramsUsed > 0 ? Math.max(0, currentStock.whitePetg / cogs.whiteGramsUsed) : Infinity,
     cogs.lbsUsed > 0 ? Math.max(0, currentStock.concrete / cogs.lbsUsed) : Infinity,
     Math.max(0, currentStock.boxes), Math.max(0, currentStock.wrap), Math.max(0, currentStock.screws), Math.max(0, currentStock.inserts), Math.max(0, currentStock.washers)
   )), [currentStock, cogs]);
 
   // Predict exact runout days per material
   const runoutDays = useMemo(() => ({
-    petg: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.petg / (cogs.gramsUsed || 1)) / dailySalesVelocity)) : Infinity,
+    blackPetg: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.blackPetg / (cogs.blackGramsUsed || 1)) / dailySalesVelocity)) : Infinity,
+    whitePetg: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.whitePetg / (cogs.whiteGramsUsed || 1)) / dailySalesVelocity)) : Infinity,
     concrete: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.concrete / (cogs.lbsUsed || 1)) / dailySalesVelocity)) : Infinity,
     boxes: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.boxes / dailySalesVelocity)) : Infinity,
     wrap: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.wrap / dailySalesVelocity)) : Infinity,
@@ -290,7 +316,8 @@ export default function App() {
   const lowStockAlerts = useMemo(() => {
     if (dailySalesVelocity === 0) return [];
     const alerts = [];
-    if (runoutDays.petg <= 7) alerts.push({ name: 'PETG', days: runoutDays.petg });
+    if (runoutDays.blackPetg <= 7) alerts.push({ name: 'Black PETG', days: runoutDays.blackPetg });
+    if (runoutDays.whitePetg <= 7) alerts.push({ name: 'White PETG', days: runoutDays.whitePetg });
     if (runoutDays.concrete <= 7) alerts.push({ name: 'Concrete', days: runoutDays.concrete });
     if (runoutDays.boxes <= 7) alerts.push({ name: 'Boxes', days: runoutDays.boxes });
     if (runoutDays.wrap <= 7) alerts.push({ name: 'Bubble Wrap', days: runoutDays.wrap });
@@ -424,9 +451,111 @@ export default function App() {
         {activeTab === 'expenses' && <ExpenseTracker uploadReceipt={uploadReceipt} expenses={expenses} onAdd={(data) => handleAdd('expenses', data)} onUpdate={(id, data) => handleUpdateRecord('expenses', id, data)} onDelete={(id) => handleDelete('expenses', id)} formatCurrency={formatCurrency} />}
         {activeTab === 'equity' && <OwnerEquity equities={equities} initialGoal={initialGoal} onAdd={(data) => handleAdd('equities', data)} onUpdate={(id, data) => handleUpdateRecord('equities', id, data)} onDelete={(id) => handleDelete('equities', id)} formatCurrency={formatCurrency} />}
         {activeTab === 'mileage' && <MileageLog mileages={mileages} onAdd={(data) => handleAdd('mileages', data)} onUpdate={(id, data) => handleUpdateRecord('mileages', id, data)} onDelete={(id) => handleDelete('mileages', id)} formatCurrency={formatCurrency} />}
-        {activeTab === 'cogs' && <Manufacturing cogs={cogs} onUpdate={handleUpdateCogs} costPerTrainer={costPerTrainer} petgCostPerGram={petgCostPerGram} formatCurrency={formatCurrency} />}
+        {activeTab === 'cogs' && <Manufacturing cogs={cogs} onUpdate={handleUpdateCogs} costPerTrainer={costPerTrainer} blackPetgCostPerGram={blackPetgCostPerGram} whitePetgCostPerGram={whitePetgCostPerGram} formatCurrency={formatCurrency} />}
         {activeTab === 'tax' && <TaxSummary revenues={revenues} expenses={expenses} mileages={mileages} formatCurrency={formatCurrency} />}
       </main>
+    </div>
+  );
+}
+
+// --- SUB-COMPONENTS & MODALS ---
+const inlineInputStyle = "w-full border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500 bg-white";
+const modalInputStyle = "w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-slate-50 focus:bg-white transition-colors";
+
+function QuickRevenueModal({ onClose, onAdd }) {
+  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', ebay: '', ad: '', shipping: '', state: '' });
+  const handleSubmit = (e) => { e.preventDefault(); if(formData.gross) onAdd(formData); };
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center"><DollarSign size={20} className="mr-2 text-blue-600"/> Quick Log Sale</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
+            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Buyer State (e.g. AZ)</label><input type="text" maxLength="2" className={modalInputStyle} placeholder="Optional" value={formData.state} onChange={e=>setFormData({...formData, state:e.target.value.toUpperCase()})}/></div>
+          </div>
+          <div className="grid grid-cols-4 gap-4">
+            <div className="col-span-3"><label className="block text-xs font-semibold text-slate-500 mb-1">Item Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
+            <div className="col-span-1"><label className="block text-xs font-semibold text-slate-500 mb-1">Qty</label><input type="number" min="1" className={modalInputStyle} value={formData.qty} onChange={e=>setFormData({...formData, qty:e.target.value})} required/></div>
+          </div>
+          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Gross Sale ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.gross} onChange={e=>setFormData({...formData, gross:e.target.value})} required/></div>
+          <div className="grid grid-cols-3 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+            <div><label className="block text-xs font-semibold text-slate-500 mb-1">eBay Fee</label><input type="number" step="0.01" className={modalInputStyle} value={formData.ebay} onChange={e=>setFormData({...formData, ebay:e.target.value})}/></div>
+            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Ad Fee</label><input type="number" step="0.01" className={modalInputStyle} value={formData.ad} onChange={e=>setFormData({...formData, ad:e.target.value})}/></div>
+            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Label Cost</label><input type="number" step="0.01" className={modalInputStyle} value={formData.shipping} onChange={e=>setFormData({...formData, shipping:e.target.value})}/></div>
+          </div>
+          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl mt-2 transition-colors">Save Sale</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function QuickExpenseModal({ onClose, onAdd, uploadReceipt }) {
+  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Supplies', amount: '' });
+  const [file, setFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const categories = ['Supplies', 'Advertising', 'Travel', 'Equipment', 'Office'];
+  
+  const handleSubmit = async (e) => { 
+    e.preventDefault(); 
+    if(!formData.amount) return; 
+    setIsUploading(true);
+    let receiptUrl = '';
+    if (file) { receiptUrl = await uploadReceipt(file) || ''; }
+    onAdd({ ...formData, receiptUrl });
+    setIsUploading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center"><Receipt size={20} className="mr-2 text-orange-500"/> Quick Log Expense</h2>
+          <button onClick={onClose} disabled={isUploading} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
+          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+            <div><label className="block text-xs font-semibold text-slate-500 mb-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 mb-1">Attach Receipt (Optional)</label>
+            <input type="file" accept="image/*,application/pdf" onChange={e=>setFile(e.target.files[0])} className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 transition-colors" />
+          </div>
+          <button type="submit" disabled={isUploading} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-xl mt-2 transition-colors flex justify-center items-center">
+            {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Vault...</> : "Save Expense"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function QuickEquityModal({ onClose, onAdd }) {
+  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Amex Transfer (Op Cash)', amount: '' });
+  const categories = ['Recoup Investment', 'Golf Fund', 'Amex Transfer (Op Cash)', 'Other Draw'];
+  const handleSubmit = (e) => { e.preventDefault(); if(formData.amount) onAdd(formData); };
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center"><ArrowRightLeft size={20} className="mr-2 text-indigo-600"/> Quick Transfer</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
+          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
+          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+          <div><label className="block text-xs font-semibold text-slate-500 mb-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
+          <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl mt-2 transition-colors">Log Transfer</button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -491,7 +620,6 @@ function Analytics({ revenues, expenses, formatCurrency }) {
     return { stateData: stateRevenues, maxStateRevenue: maxRev };
   }, [revenues]);
 
-  // Sort states by revenue for the leaderboard
   const topStates = useMemo(() => {
     return Object.keys(stateData)
       .map(code => ({ code, rev: stateData[code] }))
@@ -499,7 +627,6 @@ function Analytics({ revenues, expenses, formatCurrency }) {
       .slice(0, 5);
   }, [stateData]);
 
-  // Generate the 7x12 layout grid
   const grid = useMemo(() => {
     const arr = Array(7).fill(null).map(() => Array(12).fill(null));
     tileMapData.forEach(t => arr[t.r][t.c] = t.code);
@@ -508,8 +635,6 @@ function Analytics({ revenues, expenses, formatCurrency }) {
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      
-      {/* ENTERPRISE TILE MAP & LEADERBOARD */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
         <div className="flex items-center justify-between mb-6">
           <h3 className="font-semibold text-slate-700 flex items-center"><MapIcon size={18} className="mr-2 text-slate-400"/> Customer Geospatial Tile Map</h3>
@@ -517,12 +642,10 @@ function Analytics({ revenues, expenses, formatCurrency }) {
         </div>
         
         <div className="flex flex-col lg:flex-row gap-8">
-          
           <div className="flex-1 bg-slate-50 rounded-xl p-4 border border-slate-100 flex items-center justify-center">
             <div className="grid gap-1 sm:gap-1.5 w-full max-w-2xl" style={{ gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' }}>
               {grid.flat().map((cell, i) => {
                 if (!cell) return <div key={i} className="aspect-square" />;
-                
                 const rev = stateData[cell] || 0;
                 const intensity = maxStateRevenue > 0 ? rev / maxStateRevenue : 0;
                 const bgColor = rev > 0 ? `rgba(37, 99, 235, ${Math.max(0.15, intensity)})` : '#ffffff';
@@ -545,8 +668,6 @@ function Analytics({ revenues, expenses, formatCurrency }) {
               })}
             </div>
           </div>
-
-          {/* Top 5 Leaderboard */}
           <div className="w-full lg:w-64 flex flex-col space-y-4">
             <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200 pb-2">Top Markets</h4>
             {topStates.length === 0 ? (
@@ -563,7 +684,6 @@ function Analytics({ revenues, expenses, formatCurrency }) {
               ))
             )}
           </div>
-
         </div>
       </div>
 
@@ -631,8 +751,8 @@ function Analytics({ revenues, expenses, formatCurrency }) {
 }
 
 function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySalesVelocity, onAdd, onDelete }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], material: 'PETG (grams)', qty: '' });
-  const materials = ['PETG (grams)', 'Concrete (lbs)', 'Boxes (qty)', 'Bubble Wrap (qty)', 'Screws (sets)', 'Inserts (sets)', 'Washers (sets)'];
+  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], material: 'Black PETG (grams)', qty: '' });
+  const materials = ['Black PETG (grams)', 'White PETG (grams)', 'Concrete (lbs)', 'Boxes (qty)', 'Bubble Wrap (qty)', 'Screws (sets)', 'Inserts (sets)', 'Washers (sets)'];
   const { items: sortedRestocks, requestSort, sortConfig } = useSortableData(restocks);
 
   const addRow = (e) => { e.preventDefault(); if (!formData.qty) return; onAdd(formData); setFormData({ ...formData, qty: '' }); };
@@ -666,7 +786,8 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        <StockCard title="PETG" amount={currentStock.petg} unit="grams" isWarning={runoutDays.petg <= 7} daysRemaining={runoutDays.petg} velocity={dailySalesVelocity} />
+        <StockCard title="Black PETG" amount={currentStock.blackPetg} unit="grams" isWarning={runoutDays.blackPetg <= 7} daysRemaining={runoutDays.blackPetg} velocity={dailySalesVelocity} />
+        <StockCard title="White PETG" amount={currentStock.whitePetg} unit="grams" isWarning={runoutDays.whitePetg <= 7} daysRemaining={runoutDays.whitePetg} velocity={dailySalesVelocity} />
         <StockCard title="Concrete" amount={currentStock.concrete} unit="lbs" isWarning={runoutDays.concrete <= 7} daysRemaining={runoutDays.concrete} velocity={dailySalesVelocity} />
         <StockCard title="Boxes" amount={currentStock.boxes} unit="qty" isWarning={runoutDays.boxes <= 7} daysRemaining={runoutDays.boxes} velocity={dailySalesVelocity} />
         <StockCard title="Bubble Wrap" amount={currentStock.wrap} unit="qty" isWarning={runoutDays.wrap <= 7} daysRemaining={runoutDays.wrap} velocity={dailySalesVelocity} />
@@ -1216,7 +1337,7 @@ function MileageLog({ mileages, onAdd, onUpdate, onDelete, formatCurrency }) {
   );
 }
 
-function Manufacturing({ cogs, onUpdate, costPerTrainer, petgCostPerGram, formatCurrency }) {
+function Manufacturing({ cogs, onUpdate, costPerTrainer, blackPetgCostPerGram, whitePetgCostPerGram, formatCurrency }) {
   const handleChange = (e) => { onUpdate({ ...cogs, [e.target.name]: Number(e.target.value) }); };
 
   return (
@@ -1227,8 +1348,12 @@ function Manufacturing({ cogs, onUpdate, costPerTrainer, petgCostPerGram, format
           <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
             <h3 className="font-medium text-slate-700">Raw Materials</h3>
             <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-xs text-slate-500 mb-1">Spool Cost (PETG)</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="spoolCost" value={cogs.spoolCost} onChange={handleChange} className="input-field pl-8" /></div></div>
-              <div><label className="block text-xs text-slate-500 mb-1">Grams Used</label><input type="number" name="gramsUsed" value={cogs.gramsUsed} onChange={handleChange} className="input-field" /></div>
+              <div><label className="block text-xs text-slate-500 mb-1">Black PETG Spool Cost</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="blackSpoolCost" value={cogs.blackSpoolCost || ''} onChange={handleChange} className="input-field pl-8" /></div></div>
+              <div><label className="block text-xs text-slate-500 mb-1">Black Grams Used</label><input type="number" name="blackGramsUsed" value={cogs.blackGramsUsed || ''} onChange={handleChange} className="input-field" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              <div><label className="block text-xs text-slate-500 mb-1">White PETG Spool Cost</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="whiteSpoolCost" value={cogs.whiteSpoolCost || ''} onChange={handleChange} className="input-field pl-8" /></div></div>
+              <div><label className="block text-xs text-slate-500 mb-1">White Grams Used</label><input type="number" name="whiteGramsUsed" value={cogs.whiteGramsUsed || ''} onChange={handleChange} className="input-field" /></div>
             </div>
             <div className="grid grid-cols-2 gap-4 mt-2">
               <div><label className="block text-xs text-slate-500 mb-1">Concrete Cost per lb</label><div className="relative"><span className="absolute left-3 top-2.5 text-slate-400">$</span><input type="number" step="0.01" name="concreteCost" value={cogs.concreteCost} onChange={handleChange} className="input-field pl-8" /></div></div>
@@ -1254,7 +1379,8 @@ function Manufacturing({ cogs, onUpdate, costPerTrainer, petgCostPerGram, format
           <div className="absolute top-0 right-0 p-8 opacity-10"><Settings size={120} className="animate-[spin_20s_linear_infinite]" /></div>
           <h2 className="text-xl font-semibold mb-6 text-slate-200 z-10">Cost Per Unit Breakdown</h2>
           <div className="space-y-4 z-10">
-            <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">PETG Cost</span><span className="font-medium">{formatCurrency(petgCostPerGram * cogs.gramsUsed)}</span></div>
+            <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Black PETG Cost</span><span className="font-medium">{formatCurrency(blackPetgCostPerGram * (cogs.blackGramsUsed || 533))}</span></div>
+            <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">White PETG Cost</span><span className="font-medium">{formatCurrency(whitePetgCostPerGram * (cogs.whiteGramsUsed || 11))}</span></div>
             <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Concrete Cost</span><span className="font-medium">{formatCurrency(cogs.concreteCost * cogs.lbsUsed)}</span></div>
             <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Hardware (Screws, Inserts, Washers)</span><span className="font-medium">{formatCurrency(Number(cogs.screwsCost || 0) + Number(cogs.insertsCost || 0) + Number(cogs.washersCost || 0))}</span></div>
             <div className="flex justify-between items-center border-b border-slate-700 pb-2"><span className="text-slate-400">Packaging (Box & Wrap)</span><span className="font-medium">{formatCurrency(Number(cogs.boxCost || 0) + Number(cogs.bubbleWrapCost || 0))}</span></div>
