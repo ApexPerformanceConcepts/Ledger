@@ -689,7 +689,7 @@ function Analytics({ revenues, expenses, formatCurrency }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-8">
         <div className="bg-white rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow flex flex-col">
           <div className="flex items-center justify-between mb-8">
             <h3 className="font-bold text-zinc-900 tracking-tight text-lg">Cash Flow</h3>
@@ -698,7 +698,7 @@ function Analytics({ revenues, expenses, formatCurrency }) {
               <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-zinc-300 mr-2"></span> Exp</div>
             </div>
           </div>
-          <div className="flex-1 min-h-[250px] flex items-end space-x-2 sm:space-x-6 pb-6 border-b border-zinc-100 overflow-x-auto hide-scrollbar pt-6">
+          <div className="flex-1 min-h-[350px] flex items-end space-x-2 sm:space-x-6 pb-6 border-b border-zinc-100 overflow-x-auto hide-scrollbar pt-10">
             {monthlyData.length === 0 ? <div className="w-full text-center text-zinc-400 text-sm font-medium pb-10">No data to display yet.</div> : (
               monthlyData.map((data) => {
                 const [year, month] = data.month.split('-');
@@ -706,15 +706,30 @@ function Analytics({ revenues, expenses, formatCurrency }) {
                 const revHeight = Math.max(2, (data.rev / maxBarValue) * 100);
                 const expHeight = Math.max(2, (data.exp / maxBarValue) * 100);
                 return (
-                  <div key={data.month} className="flex flex-col items-center flex-1 min-w-[50px] group">
-                    <div className="flex items-end justify-center space-x-1 w-full h-48 relative">
-                      <div className="w-1/2 bg-zinc-900 rounded-t-sm transition-all duration-500 relative hover:bg-blue-600" style={{ height: `${revHeight}%` }}>
-                        <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-zinc-900 text-white text-xs font-semibold py-1.5 px-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none shadow-lg">{formatCurrency(data.rev)}</div>
+                  <div key={data.month} className="flex flex-col items-center flex-1 min-w-[50px] group relative">
+                    
+                    {/* Unified Multi-Data Tooltip */}
+                    <div className="absolute bottom-full mb-4 left-1/2 transform -translate-x-1/2 bg-zinc-900 text-white px-5 py-4 rounded-2xl shadow-xl opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-2 group-hover:translate-y-0 whitespace-nowrap z-50 pointer-events-none flex flex-col gap-2">
+                      <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1 border-b border-zinc-800 pb-2">{monthName} '{year.slice(2)}</div>
+                      <div className="flex justify-between items-center gap-6 text-sm">
+                        <span className="flex items-center font-medium text-zinc-300"><span className="w-2 h-2 rounded-full bg-blue-500 mr-2"></span>Revenue</span> 
+                        <span className="font-semibold">{formatCurrency(data.rev)}</span>
                       </div>
-                      <div className="w-1/2 bg-zinc-300 rounded-t-sm transition-all duration-500 relative" style={{ height: `${expHeight}%` }}>
+                      <div className="flex justify-between items-center gap-6 text-sm">
+                        <span className="flex items-center font-medium text-zinc-300"><span className="w-2 h-2 rounded-full bg-zinc-400 mr-2"></span>Expenses</span> 
+                        <span className="font-semibold">{formatCurrency(data.exp)}</span>
+                      </div>
+                      <div className="flex justify-between items-center gap-6 text-sm pt-2 mt-1 border-t border-zinc-800">
+                        <span className="font-bold text-zinc-300">Net Profit</span> 
+                        <span className={data.rev - data.exp >= 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{formatCurrency(data.rev - data.exp)}</span>
                       </div>
                     </div>
-                    <div className="mt-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">{monthName}</div>
+
+                    <div className="flex items-end justify-center space-x-1 w-full h-72 relative">
+                      <div className="w-1/2 bg-zinc-900 rounded-t-sm transition-all duration-500 hover:bg-blue-600" style={{ height: `${revHeight}%` }}></div>
+                      <div className="w-1/2 bg-zinc-300 rounded-t-sm transition-all duration-500 hover:bg-zinc-400" style={{ height: `${expHeight}%` }}></div>
+                    </div>
+                    <div className="mt-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 group-hover:text-zinc-900 transition-colors">{monthName}</div>
                   </div>
                 );
               })
