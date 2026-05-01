@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
-  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X, ArrowUpDown, ChevronUp, ChevronDown, PieChart, BarChart3, Printer, Zap, ArrowRightLeft, ShieldCheck, Target, Package, AlertTriangle, Image as ImageIcon, Map as MapIcon, Loader2, Inbox, PackageOpen, TrendingUp, Sparkles
+  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X, ArrowUpDown, ChevronUp, ChevronDown, PieChart, BarChart3, Printer, Zap, ArrowRightLeft, ShieldCheck, Target, Package, AlertTriangle, Image as ImageIcon, Map as MapIcon, Loader2, Inbox, PackageOpen, TrendingUp, Sparkles, ShoppingCart
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
@@ -227,8 +227,8 @@ export default function App() {
   
   const [appSettings, setAppSettings] = useState({ initialInvestment: 1219.00 });
   const [cogs, setCogs] = useState({
-    blackSpoolCost: 20.00, blackGramsUsed: 533, 
-    whiteSpoolCost: 20.00, whiteGramsUsed: 11,
+    blackSpoolCost: 16.99, blackGramsUsed: 533, 
+    whiteSpoolCost: 16.99, whiteGramsUsed: 11,
     concreteCost: 0.15, lbsUsed: 5, 
     boxCost: 1.25, bubbleWrapCost: 0.30,
     screwsCost: 0.10, insertsCost: 0.15, washersCost: 0.05
@@ -272,9 +272,9 @@ export default function App() {
         const data = docSnap.data();
         setCogs(prev => ({ 
           ...prev, ...data,
-          blackSpoolCost: data.blackSpoolCost ?? data.spoolCost ?? 20.00,
+          blackSpoolCost: data.blackSpoolCost ?? data.spoolCost ?? 16.99,
           blackGramsUsed: data.blackGramsUsed ?? (data.gramsUsed === 250 ? 533 : data.gramsUsed) ?? 533,
-          whiteSpoolCost: data.whiteSpoolCost ?? 20.00,
+          whiteSpoolCost: data.whiteSpoolCost ?? 16.99,
           whiteGramsUsed: data.whiteGramsUsed ?? 11,
         }));
       } 
@@ -329,8 +329,8 @@ export default function App() {
   };
 
   // --- CALCULATIONS & PREDICTIVE SUPPLY CHAIN ---
-  const blackPetgCostPerGram = (cogs.blackSpoolCost || 20) / 1000;
-  const whitePetgCostPerGram = (cogs.whiteSpoolCost || 20) / 1000;
+  const blackPetgCostPerGram = (cogs.blackSpoolCost || 16.99) / 1000;
+  const whitePetgCostPerGram = (cogs.whiteSpoolCost || 16.99) / 1000;
   
   const costPerTrainer = 
     (blackPetgCostPerGram * (cogs.blackGramsUsed || 533)) + 
@@ -607,8 +607,8 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === 'analytics' && <Analytics revenues={revenues} expenses={expenses} formatCurrency={formatCurrency} />}
-            {activeTab === 'warehouse' && <Warehouse restocks={restocks} currentStock={currentStock} buildableUnits={buildableUnits} runoutDays={runoutDays} dailySalesVelocity={dailySalesVelocity} onAdd={(data) => handleAdd('restocks', data)} onDelete={(id) => handleDelete('restocks', id)} />}
+            {activeTab === 'analytics' && <Analytics revenues={revenues} expenses={expenses} formatCurrency={formatCurrency} totalTrueProfit={totalTrueProfit} totalUnitsSold={totalUnitsSold} />}
+            {activeTab === 'warehouse' && <Warehouse restocks={restocks} currentStock={currentStock} buildableUnits={buildableUnits} runoutDays={runoutDays} dailySalesVelocity={dailySalesVelocity} onAdd={(data) => handleAdd('restocks', data)} onDelete={(id) => handleDelete('restocks', id)} formatCurrency={formatCurrency} cogs={cogs} />}
             {activeTab === 'fleet' && <FleetCommand machines={machines} totalTrueProfit={totalTrueProfit} totalUnitsSold={totalUnitsSold} onAdd={(data) => handleAdd('machines', data)} onDelete={(id) => handleDelete('machines', id)} onUpdate={handleUpdateRecord} formatCurrency={formatCurrency} />}
             {activeTab === 'revenue' && <RevenueLog revenues={revenues} costPerTrainer={costPerTrainer} onAdd={(data) => handleAdd('revenues', data)} onUpdate={(id, data) => handleUpdateRecord('revenues', id, data)} onDelete={(id) => handleDelete('revenues', id)} formatCurrency={formatCurrency} />}
             {activeTab === 'expenses' && <ExpenseTracker uploadReceipt={uploadReceipt} expenses={expenses} onAdd={(data) => handleAdd('expenses', data)} onUpdate={(id, data) => handleUpdateRecord('expenses', id, data)} onDelete={(id) => handleDelete('expenses', id)} formatCurrency={formatCurrency} />}
@@ -747,7 +747,7 @@ const tileMapData = [
   { code: 'HI', c: 0, r: 6 }, { code: 'TX', c: 4, r: 6 }, { code: 'FL', c: 8, r: 6 }
 ];
 
-function Analytics({ revenues, expenses, formatCurrency }) {
+function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalUnitsSold }) {
   const [demandTimeframe, setDemandTimeframe] = useState('lifetime');
 
   const monthlyData = useMemo(() => {
@@ -870,6 +870,21 @@ function Analytics({ revenues, expenses, formatCurrency }) {
     return { current30Rev, prev30Rev, projectedNext30Rev, projectedNext30Units, momGrowth };
   }, [revenues]);
 
+  // --- CAC VS LTV ENGINE ---
+  const cacData = useMemo(() => {
+    const expAdSpend = expenses.filter(e => e.category === 'Advertising').reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const revAdSpend = revenues.reduce((sum, r) => sum + Number(r.ad || 0), 0);
+    const totalAdSpend = expAdSpend + revAdSpend;
+    
+    const cac = totalUnitsSold > 0 ? totalAdSpend / totalUnitsSold : 0;
+    const avgProfit = totalUnitsSold > 0 ? totalTrueProfit / totalUnitsSold : 0;
+    const ratio = cac > 0 ? avgProfit / cac : 0;
+    
+    const isHealthy = cac < avgProfit && ratio > 2;
+
+    return { cac, avgProfit, ratio, totalAdSpend, isHealthy };
+  }, [revenues, expenses, totalUnitsSold, totalTrueProfit]);
+
   return (
     <div className="space-y-8 animate-in fade-in">
       <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow">
@@ -924,8 +939,44 @@ function Analytics({ revenues, expenses, formatCurrency }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-8">
-        <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow flex flex-col">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* CAC VS LTV RADAR */}
+        <div className="lg:col-span-1 bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow flex flex-col relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-6 opacity-[0.03] text-zinc-900 transition-transform duration-700 group-hover:scale-110 group-hover:rotate-12"><Target size={150} /></div>
+          <h3 className="font-bold text-zinc-900 tracking-tight text-lg mb-8 z-10">Acquisition vs LTV</h3>
+          
+          <div className="flex-1 flex flex-col justify-center items-center z-10 relative">
+            {/* Minimal SVG Donut Chart for Ratio */}
+            <svg viewBox="0 0 36 36" className="w-40 h-40 transform -rotate-90 drop-shadow-sm">
+              <circle cx="18" cy="18" r="15.915" fill="transparent" stroke="#f4f4f5" strokeWidth="4" />
+              <circle cx="18" cy="18" r="15.915" fill="transparent" 
+                stroke={cacData.isHealthy ? '#10b981' : '#f43f5e'} 
+                strokeWidth="4" 
+                strokeDasharray={`${Math.min(100, (cacData.ratio / 4) * 100)} 100`} 
+                strokeLinecap="round"
+                className="transition-all duration-1000 ease-out" 
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-2">
+              <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold mb-0.5">ROAS Ratio</span>
+              <span className={`text-2xl font-bold tracking-tight ${cacData.isHealthy ? 'text-emerald-600' : 'text-rose-600'}`}>{cacData.ratio.toFixed(1)}x</span>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-zinc-100 space-y-3 z-10">
+            <div className="flex justify-between items-center text-sm">
+              <span className="font-medium text-zinc-500">Customer Acq Cost (CAC)</span>
+              <span className="font-bold text-zinc-900">{formatCurrency(cacData.cac)}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="font-medium text-zinc-500">Avg Net Profit (LTV)</span>
+              <span className="font-bold text-zinc-900">{formatCurrency(cacData.avgProfit)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="lg:col-span-2 bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow flex flex-col">
           <div className="flex items-center justify-between mb-8">
             <h3 className="font-bold text-zinc-900 tracking-tight text-lg">Cash Flow</h3>
             <div className="flex items-center space-x-4 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
@@ -933,7 +984,7 @@ function Analytics({ revenues, expenses, formatCurrency }) {
               <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-zinc-300 mr-2"></span> Exp</div>
             </div>
           </div>
-          <div className="flex-1 min-h-[350px] flex items-end space-x-2 sm:space-x-6 pb-6 border-b border-zinc-100 overflow-x-auto hide-scrollbar pt-10">
+          <div className="flex-1 min-h-[250px] flex items-end space-x-2 sm:space-x-6 pb-6 border-b border-zinc-100 overflow-x-auto hide-scrollbar pt-10">
             {monthlyData.length === 0 ? <div className="w-full text-center text-zinc-400 text-sm font-medium pb-10">No data to display yet.</div> : (
               monthlyData.map((data) => {
                 const [year, month] = data.month.split('-');
@@ -959,7 +1010,7 @@ function Analytics({ revenues, expenses, formatCurrency }) {
                       </div>
                     </div>
 
-                    <div className="flex items-end justify-center space-x-1 w-full h-72 relative">
+                    <div className="flex items-end justify-center space-x-1 w-full h-48 relative">
                       <div className="w-1/2 bg-zinc-900 rounded-t-sm transition-all duration-500 hover:bg-blue-600" style={{ height: `${revHeight}%` }}></div>
                       <div className="w-1/2 bg-zinc-300 rounded-t-sm transition-all duration-500 hover:bg-zinc-400" style={{ height: `${expHeight}%` }}></div>
                     </div>
@@ -970,138 +1021,141 @@ function Analytics({ revenues, expenses, formatCurrency }) {
             )}
           </div>
         </div>
-        <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow flex flex-col">
-          <h3 className="font-bold text-zinc-900 tracking-tight text-lg mb-8">Expenses</h3>
-          {categoryData.length === 0 ? <div className="flex-1 flex items-center justify-center text-zinc-400 text-sm font-medium">No expenses logged yet.</div> : (
-            <div className="flex flex-col sm:flex-row items-center justify-center flex-1 gap-10">
-              <div className="relative w-48 h-48">
-                <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90 rounded-full drop-shadow-sm">
-                  {categoryData.map((slice) => <circle key={slice.category} r="12" cx="16" cy="16" fill="transparent" stroke={slice.color} strokeWidth="8" strokeDasharray={`${slice.pct > 0 ? slice.pct : 0} 100`} strokeDashoffset={`-${slice.offset}`} className="transition-all duration-1000 ease-out" />)}
-                  <circle r="9" cx="16" cy="16" fill="white" />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold mb-1">Total</span>
-                  <span className="text-lg font-bold text-zinc-900 tracking-tight">{formatCurrency(categoryData.reduce((s, c) => s + c.amount, 0))}</span>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* DAY OF WEEK DEMAND ANALYSIS */}
+        <div className="lg:col-span-2 bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow">
+          <div className="flex flex-col lg:flex-row gap-10 items-center h-full">
+            
+            <div className="flex-1 w-full space-y-5 flex flex-col justify-center h-full">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 pb-4">
+                <h3 className="font-bold text-zinc-900 tracking-tight text-lg">Demand Pattern Analysis</h3>
+                <div className="flex bg-zinc-100/80 p-1 rounded-xl w-max">
+                  <button onClick={() => setDemandTimeframe('14')} className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${demandTimeframe === '14' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}>14D</button>
+                  <button onClick={() => setDemandTimeframe('30')} className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${demandTimeframe === '30' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}>30D</button>
+                  <button onClick={() => setDemandTimeframe('lifetime')} className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${demandTimeframe === 'lifetime' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}>All</button>
                 </div>
               </div>
-              <div className="flex flex-col space-y-4 w-full sm:w-auto">
-            {categoryData.map(slice => (
-              <div key={slice.category} className="flex items-center justify-between space-x-6">
-                <div className="flex items-center"><span className="w-2 h-2 rounded-full mr-3" style={{ backgroundColor: slice.color }}></span><span className="text-sm font-medium text-zinc-600">{slice.category}</span></div>
-                <div className="flex items-center space-x-3"><span className="text-sm font-semibold text-zinc-900">{formatCurrency(slice.amount)}</span><span className="text-xs font-bold text-zinc-400 w-8 text-right">{Math.round(slice.pct)}%</span></div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  </div>
-
-  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-    {/* DAY OF WEEK DEMAND ANALYSIS */}
-    <div className="lg:col-span-2 bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow">
-      <div className="flex flex-col lg:flex-row gap-10 items-center h-full">
-        
-        <div className="flex-1 w-full space-y-5 flex flex-col justify-center h-full">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 pb-4">
-            <h3 className="font-bold text-zinc-900 tracking-tight text-lg">Demand Pattern Analysis</h3>
-            <div className="flex bg-zinc-100/80 p-1 rounded-xl w-max">
-              <button onClick={() => setDemandTimeframe('14')} className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${demandTimeframe === '14' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}>14D</button>
-              <button onClick={() => setDemandTimeframe('30')} className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${demandTimeframe === '30' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}>30D</button>
-              <button onClick={() => setDemandTimeframe('lifetime')} className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${demandTimeframe === 'lifetime' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}>All</button>
-            </div>
-          </div>
-          
-          <p className="text-sm font-medium text-zinc-500 leading-relaxed max-w-sm">
-            Based on your <strong className="text-zinc-700">{demandTimeframe === 'lifetime' ? 'lifetime' : `last ${demandTimeframe} days`}</strong> ledger data, your peak sales velocity occurs on <strong className="text-zinc-900">{bestDay?.day || 'N/A'}s</strong>, accounting for <strong className="text-blue-600">{formatCurrency(bestDay?.rev || 0)}</strong> in total gross revenue.
-          </p>
-          {bestDay?.units > 0 && (
-            <div className="p-4 bg-blue-50/50 border border-blue-100/50 rounded-2xl">
-              <div className="inline-flex items-center text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-2">
-                <Zap size={12} className="mr-1.5" /> Actionable Insight
-              </div>
-              <p className="text-xs font-medium text-zinc-600">
-                Consider boosting your eBay promoted listing budget heavily on <strong>{bestDay?.day} mornings</strong> to capitalize on high buyer intent.
+              
+              <p className="text-sm font-medium text-zinc-500 leading-relaxed max-w-sm">
+                Based on your <strong className="text-zinc-700">{demandTimeframe === 'lifetime' ? 'lifetime' : `last ${demandTimeframe} days`}</strong> ledger data, your peak sales velocity occurs on <strong className="text-zinc-900">{bestDay?.day || 'N/A'}s</strong>, accounting for <strong className="text-blue-600">{formatCurrency(bestDay?.rev || 0)}</strong> in total gross revenue.
               </p>
-            </div>
-          )}
-        </div>
-
-        <div className="flex-1 w-full flex items-end justify-between space-x-2 h-[240px] pt-6 border-b border-zinc-100">
-          {dayOfWeekData.map((d) => {
-            const height = Math.max(5, (d.units / maxDayUnits) * 100);
-            const isBest = d.day === bestDay?.day && d.units > 0;
-            return (
-              <div key={d.day} className="flex flex-col items-center flex-1 group h-full">
-                <div className="w-full relative flex justify-center h-full items-end pb-3">
-                  <div className="absolute bottom-full mb-3 bg-zinc-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-2 group-hover:translate-y-0 whitespace-nowrap z-10 pointer-events-none shadow-lg">
-                    {d.units} units
+              {bestDay?.units > 0 && (
+                <div className="p-4 bg-blue-50/50 border border-blue-100/50 rounded-2xl">
+                  <div className="inline-flex items-center text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-2">
+                    <Zap size={12} className="mr-1.5" /> Actionable Insight
                   </div>
-                  <div 
-                    className={`w-full max-w-[48px] rounded-t-lg transition-all duration-500 ${isBest ? 'bg-blue-500' : 'bg-zinc-200 group-hover:bg-zinc-300'}`}
-                    style={{ height: `${height}%` }}
-                  ></div>
+                  <p className="text-xs font-medium text-zinc-600">
+                    Consider boosting your eBay promoted listing budget heavily on <strong>{bestDay?.day} mornings</strong> to capitalize on high buyer intent.
+                  </p>
                 </div>
-                <div className={`text-[10px] font-bold uppercase tracking-widest mt-2 transition-colors ${isBest ? 'text-blue-600' : 'text-zinc-400 group-hover:text-zinc-700'}`}>{d.short}</div>
-              </div>
-            )
-          })}
+              )}
+            </div>
+
+            <div className="flex-1 w-full flex items-end justify-between space-x-2 h-[240px] pt-6 border-b border-zinc-100">
+              {dayOfWeekData.map((d) => {
+                const height = Math.max(5, (d.units / maxDayUnits) * 100);
+                const isBest = d.day === bestDay?.day && d.units > 0;
+                return (
+                  <div key={d.day} className="flex flex-col items-center flex-1 group h-full">
+                    <div className="w-full relative flex justify-center h-full items-end pb-3">
+                      <div className="absolute bottom-full mb-3 bg-zinc-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-2 group-hover:translate-y-0 whitespace-nowrap z-10 pointer-events-none shadow-lg">
+                        {d.units} units
+                      </div>
+                      <div 
+                        className={`w-full max-w-[48px] rounded-t-lg transition-all duration-500 ${isBest ? 'bg-blue-500' : 'bg-zinc-200 group-hover:bg-zinc-300'}`}
+                        style={{ height: `${height}%` }}
+                      ></div>
+                    </div>
+                    <div className={`text-[10px] font-bold uppercase tracking-widest mt-2 transition-colors ${isBest ? 'text-blue-600' : 'text-zinc-400 group-hover:text-zinc-700'}`}>{d.short}</div>
+                  </div>
+                )
+              })}
+            </div>
+
+          </div>
         </div>
 
+        {/* APEX AI FORECAST CARD */}
+        <div className="lg:col-span-1 bg-zinc-950 backdrop-blur-md rounded-3xl border border-zinc-800 p-8 shadow-2xl flex flex-col relative overflow-hidden group hover:shadow-[0_8px_30px_rgb(0,0,0,0.4)] transition-all">
+          <div className="absolute top-0 right-0 p-6 opacity-[0.03] text-white transition-transform duration-700 group-hover:scale-110 group-hover:rotate-12"><Sparkles size={150} /></div>
+          
+          <h3 className="font-bold text-white tracking-tight text-lg flex items-center mb-6 z-10">
+            <Sparkles size={16} className="text-indigo-400 mr-2" /> Apex AI Forecast
+          </h3>
+          
+          <div className="z-10 flex-1 flex flex-col justify-center py-4">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Projected Next 30 Days</p>
+            <div className="text-4xl sm:text-5xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-indigo-400 to-purple-400 mb-2">
+              <AnimatedNumber value={forecastData.projectedNext30Rev} formatCurrency={formatCurrency} />
+            </div>
+            <p className="text-sm font-medium text-zinc-400 flex items-center">
+              ~<AnimatedNumber value={forecastData.projectedNext30Units} isInt={true} /> units <span className="text-zinc-600 ml-1">at current velocity</span>
+            </p>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-zinc-800/80 z-10">
+            <div className="flex justify-between items-end mb-3">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 flex items-center"><TrendingUp size={12} className="mr-1.5"/> MoM Growth</span>
+              <span className={`text-sm font-bold tracking-tight ${forecastData.momGrowth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {forecastData.momGrowth >= 0 ? '+' : ''}{forecastData.momGrowth.toFixed(1)}%
+              </span>
+            </div>
+            
+            <div className="w-full bg-zinc-800/50 rounded-full h-1.5 overflow-hidden shadow-inner">
+              <div 
+                className={`h-full rounded-full transition-all duration-1000 ease-out ${forecastData.momGrowth >= 0 ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]' : 'bg-rose-400'}`} 
+                style={{ width: `${Math.min(100, Math.max(0, 50 + forecastData.momGrowth / 2))}%` }} 
+              ></div>
+            </div>
+            
+            <div className="flex justify-between mt-3 text-xs font-medium text-zinc-500">
+              <span>Last 30: {formatCurrency(forecastData.prev30Rev)}</span>
+              <span>Current: {formatCurrency(forecastData.current30Rev)}</span>
+            </div>
+          </div>
+        </div>
       </div>
+
     </div>
-
-    {/* APEX AI FORECAST CARD */}
-    <div className="lg:col-span-1 bg-zinc-950 backdrop-blur-md rounded-3xl border border-zinc-800 p-8 shadow-2xl flex flex-col relative overflow-hidden group hover:shadow-[0_8px_30px_rgb(0,0,0,0.4)] transition-all">
-      <div className="absolute top-0 right-0 p-6 opacity-[0.03] text-white transition-transform duration-700 group-hover:scale-110 group-hover:rotate-12"><Sparkles size={150} /></div>
-      
-      <h3 className="font-bold text-white tracking-tight text-lg flex items-center mb-6 z-10">
-        <Sparkles size={16} className="text-indigo-400 mr-2" /> Apex AI Forecast
-      </h3>
-      
-      <div className="z-10 flex-1 flex flex-col justify-center py-4">
-        <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Projected Next 30 Days</p>
-        <div className="text-4xl sm:text-5xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-indigo-400 to-purple-400 mb-2">
-          <AnimatedNumber value={forecastData.projectedNext30Rev} formatCurrency={formatCurrency} />
-        </div>
-        <p className="text-sm font-medium text-zinc-400 flex items-center">
-          ~<AnimatedNumber value={forecastData.projectedNext30Units} isInt={true} /> units <span className="text-zinc-600 ml-1">at current velocity</span>
-        </p>
-      </div>
-
-      <div className="mt-6 pt-6 border-t border-zinc-800/80 z-10">
-        <div className="flex justify-between items-end mb-3">
-          <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 flex items-center"><TrendingUp size={12} className="mr-1.5"/> MoM Growth</span>
-          <span className={`text-sm font-bold tracking-tight ${forecastData.momGrowth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {forecastData.momGrowth >= 0 ? '+' : ''}{forecastData.momGrowth.toFixed(1)}%
-          </span>
-        </div>
-        
-        <div className="w-full bg-zinc-800/50 rounded-full h-1.5 overflow-hidden shadow-inner">
-          <div 
-            className={`h-full rounded-full transition-all duration-1000 ease-out ${forecastData.momGrowth >= 0 ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]' : 'bg-rose-400'}`} 
-            style={{ width: `${Math.min(100, Math.max(0, 50 + forecastData.momGrowth / 2))}%` }} 
-          ></div>
-        </div>
-        
-        <div className="flex justify-between mt-3 text-xs font-medium text-zinc-500">
-          <span>Last 30: {formatCurrency(forecastData.prev30Rev)}</span>
-          <span>Current: {formatCurrency(forecastData.current30Rev)}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-</div>
   );
 }
 
-function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySalesVelocity, onAdd, onDelete }) {
+function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySalesVelocity, onAdd, onDelete, formatCurrency, cogs }) {
   const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], material: 'Black PETG (grams)', qty: '' });
   const materials = ['Black PETG (grams)', 'White PETG (grams)', 'Concrete (lbs)', 'Boxes (qty)', 'Bubble Wrap (qty)', 'Screws (sets)', 'Inserts (sets)', 'Washers (sets)'];
   const { items: sortedRestocks, requestSort, sortConfig } = useSortableData(restocks);
 
   const addRow = (e) => { e.preventDefault(); if (!formData.qty) return; onAdd(formData); setFormData({ ...formData, qty: '' }); };
+
+  // --- AUTOMATED SUPPLIER BIDDING ENGINE (SUNLU PETG) ---
+  const supplyOptions = useMemo(() => {
+    const options = [
+      { id: 'amz4', size: 4, name: '4KG Bulk', platform: 'Amazon Prime', price: Number(cogs.liveAmz4kgPrice) || 52.99, shipping: 0.00, taxRate: 0.07, url: 'https://www.amazon.com/s?k=Sunlu+PETG+4kg+black' },
+      { id: 'ebay10', size: 10, name: '10KG Master', platform: 'eBay', price: Number(cogs.liveEbay10kgPrice) || 115.00, shipping: 0.00, taxRate: 0.07, url: 'https://www.ebay.com/sch/i.html?_nkw=Sunlu+PETG+10kg+black' }
+    ];
+    
+    const processed = options.map(opt => {
+      const tax = opt.price * opt.taxRate;
+      const total = opt.price + tax + opt.shipping;
+      const costPerKg = total / opt.size;
+      const yieldUnits = Math.floor((opt.size * 1000) / Math.max(1, cogs.blackGramsUsed));
+      const daysSupply = dailySalesVelocity > 0 ? Math.floor(yieldUnits / dailySalesVelocity) : '∞';
+      
+      return { ...opt, tax, total, costPerKg, yieldUnits, daysSupply };
+    });
+
+    const bestValueId = processed.reduce((min, p) => p.costPerKg < min.costPerKg ? p : min, processed[0]).id;
+
+    return processed.map(p => ({ ...p, isBestValue: p.id === bestValueId }));
+  }, [cogs.blackGramsUsed, cogs.liveAmz4kgPrice, cogs.liveEbay10kgPrice, dailySalesVelocity]);
+
+  const lastSyncText = useMemo(() => {
+    if (!cogs.lastPriceSync) return "Awaiting first sync...";
+    const date = cogs.lastPriceSync?.toDate ? cogs.lastPriceSync.toDate() : new Date(cogs.lastPriceSync);
+    return "Last synced: " + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  }, [cogs.lastPriceSync]);
 
   const StockCard = ({ title, amount, unit, isWarning, daysRemaining, velocity }) => (
     <div className={`rounded-3xl border p-6 flex flex-col justify-center transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${isWarning ? 'bg-amber-50/50 border-amber-200/60' : 'bg-white/80 backdrop-blur-md border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]'}`}>
@@ -1140,6 +1194,68 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
         <StockCard title="Screws" amount={currentStock.screws} unit="sets" isWarning={runoutDays.screws <= 7} daysRemaining={runoutDays.screws} velocity={dailySalesVelocity} />
         <StockCard title="Inserts" amount={currentStock.inserts} unit="sets" isWarning={runoutDays.inserts <= 7} daysRemaining={runoutDays.inserts} velocity={dailySalesVelocity} />
         <StockCard title="Washers" amount={currentStock.washers} unit="sets" isWarning={runoutDays.washers <= 7} daysRemaining={runoutDays.washers} velocity={dailySalesVelocity} />
+      </div>
+
+      {/* NEW: Automated Supplier Engine */}
+      <div className={`bg-white/80 backdrop-blur-md rounded-3xl border p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] transition-all ${runoutDays.blackPetg <= 14 ? 'ring-2 ring-blue-500/20 shadow-xl' : 'border-zinc-100'}`}>
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight text-zinc-900 flex items-center">
+              Apex Procurement Engine <Sparkles size={16} className="text-blue-500 ml-2" />
+            </h2>
+            <p className="text-sm font-medium text-zinc-500 mt-1">
+              Live market scraping for <strong className="text-zinc-800">Sunlu 1.75mm PETG Black</strong> • <span className="text-xs text-blue-600 font-semibold ml-1">{lastSyncText}</span>
+            </p>
+          </div>
+          {runoutDays.blackPetg <= 14 && (
+            <div className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest animate-pulse border border-blue-200/50 w-max">
+              Reorder Recommended
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {supplyOptions.map((opt) => (
+            <div key={opt.id} className={`rounded-2xl border p-6 flex flex-col relative transition-all hover:-translate-y-1 ${opt.isBestValue ? 'bg-zinc-900 border-zinc-800 text-white shadow-lg' : 'bg-zinc-50 border-zinc-200/60 text-zinc-900 hover:shadow-md'}`}>
+              {opt.isBestValue && <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-sm">Best Value</div>}
+              
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className={`text-sm font-bold mb-1 ${opt.isBestValue ? 'text-zinc-100' : 'text-zinc-800'}`}>{opt.name}</h3>
+                  <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${opt.isBestValue ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-200 text-zinc-600'}`}>{opt.platform}</span>
+                </div>
+                <div className="text-right">
+                   <div className="text-3xl font-bold tracking-tighter">{formatCurrency(opt.total)}</div>
+                   <div className={`text-[10px] font-medium ${opt.isBestValue ? 'text-zinc-400' : 'text-zinc-500'}`}>incl. tax & ship</div>
+                </div>
+              </div>
+              
+              <div className="space-y-3 mt-auto text-sm font-medium">
+                <div className={`flex justify-between pb-3 border-b ${opt.isBestValue ? 'border-zinc-700 text-zinc-300' : 'border-zinc-200 text-zinc-500'}`}>
+                  <span>Cost per KG</span>
+                  <span className={`font-bold text-lg tracking-tight ${opt.isBestValue ? 'text-emerald-400' : 'text-emerald-600'}`}>{formatCurrency(opt.costPerKg)}</span>
+                </div>
+                <div className={`flex justify-between pb-3 border-b ${opt.isBestValue ? 'border-zinc-700 text-zinc-300' : 'border-zinc-200 text-zinc-500'}`}>
+                  <span>Yields</span>
+                  <span className={opt.isBestValue ? 'text-zinc-100 font-bold' : 'text-zinc-800 font-bold'}>{opt.yieldUnits} trainers</span>
+                </div>
+                <div className={`flex justify-between pt-1 ${opt.isBestValue ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  <span>Lasts Approx</span>
+                  <span className={opt.isBestValue ? 'text-zinc-100 font-bold' : 'text-zinc-800 font-bold'}>{opt.daysSupply} days</span>
+                </div>
+              </div>
+
+              <a 
+                href={opt.url} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className={`mt-8 w-full py-3 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center justify-center transition-colors ${opt.isBestValue ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md' : 'bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-700'}`}
+              >
+                <ShoppingCart size={16} className="mr-2" /> View on {opt.platform}
+              </a>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
