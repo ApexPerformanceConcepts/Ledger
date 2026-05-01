@@ -344,7 +344,7 @@ export default function App() {
 
   const totalUnitsSold = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.qty || 1), 0), [revenues]);
   const totalGrossRevenue = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.gross || 0), 0), [revenues]);
-  const totalPlatformFees = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.ebay || 0) + Number(r.ad || 0) + Number(r.shipping || 0), 0), [revenues]);
+  const totalPlatformFees = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.ebay || 0) + Number(r.ad || 0) + Number(r.shipping || 0) + Number(r.salesTax || 0), 0), [revenues]);
   
   const totalOperatingExpenses = useMemo(() => expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0), [expenses]);
   const totalMiles = useMemo(() => mileages.reduce((sum, m) => sum + Number(m.miles || 0), 0), [mileages]);
@@ -354,7 +354,7 @@ export default function App() {
   
   const totalTrueProfit = useMemo(() => {
     return revenues.reduce((sum, r) => {
-      const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0);
+      const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0) - Number(r.salesTax || 0);
       return sum + (net - (costPerTrainer * Number(r.qty || 1)));
     }, 0);
   }, [revenues, costPerTrainer]);
@@ -550,7 +550,7 @@ export default function App() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   <DashboardCard title="Total Revenue" amount={totalGrossRevenue} subtitle="Gross lifetime sales" color="zinc" formatCurrency={formatCurrency} />
-                  <DashboardCard title="Platform Fees" amount={totalPlatformFees} subtitle="eBay, Ads, & Shipping" color="zinc" isNegative formatCurrency={formatCurrency} />
+                  <DashboardCard title="Platform Fees" amount={totalPlatformFees} subtitle="eBay, Ads, Shipping, & Tax" color="zinc" isNegative formatCurrency={formatCurrency} />
                   <DashboardCard title="Operating Expenses" amount={totalOperatingExpenses} subtitle="Printers, tools, gear" color="zinc" isNegative formatCurrency={formatCurrency} />
                   
                   <div className="col-span-1 md:col-span-2 lg:col-span-3 h-px bg-zinc-200/60 my-2"></div>
@@ -629,7 +629,7 @@ const modalInputStyle = "w-full border border-zinc-200 bg-zinc-50/50 rounded-2xl
 const inlineInputStyle = "w-full border border-zinc-200 rounded-lg px-3 py-1.5 text-sm font-medium transition-all focus:border-zinc-900 outline-none";
 
 function QuickRevenueModal({ onClose, onAdd }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', ebay: '', ad: '', shipping: '', state: '' });
+  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', salesTax: '', ebay: '', ad: '', shipping: '', state: '' });
   const [showFees, setShowFees] = useState(false);
 
   const handleSubmit = (e) => { e.preventDefault(); if(formData.gross) onAdd(formData); };
@@ -649,7 +649,10 @@ function QuickRevenueModal({ onClose, onAdd }) {
             <div className="col-span-3"><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
             <div className="col-span-1"><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Qty</label><input type="number" min="1" className={modalInputStyle} value={formData.qty} onChange={e=>setFormData({...formData, qty:e.target.value})} required/></div>
           </div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Gross Sale ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.gross} onChange={e=>setFormData({...formData, gross:e.target.value})} required/></div>
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Total Paid (Gross $)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.gross} onChange={e=>setFormData({...formData, gross:e.target.value})} required/></div>
+            <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Sales Tax ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.salesTax} onChange={e=>setFormData({...formData, salesTax:e.target.value})}/></div>
+          </div>
           
           {!showFees ? (
             <button type="button" onClick={() => setShowFees(true)} className="w-full py-3.5 border border-dashed border-zinc-200 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-zinc-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all flex justify-center items-center">
@@ -1451,15 +1454,16 @@ function DashboardCard({ title, amount, subtitle, color, isNegative, highlight, 
 }
 
 function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, formatCurrency }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', ebay: '', ad: '', shipping: '', state: '' });
+  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', salesTax: '', ebay: '', ad: '', shipping: '', state: '' });
   const [importPreview, setImportPreview] = useState(null);
+  const [importStats, setImportStats] = useState({ total: 0, unchanged: 0, updated: 0, new: 0 });
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [showFees, setShowFees] = useState(false);
   const fileInputRef = useRef(null);
 
   const enrichedRevenues = useMemo(() => revenues.map(r => {
-    const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0);
+    const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0) - Number(r.salesTax || 0);
     const qty = Number(r.qty || 1);
     const trueProfit = net - (costPerTrainer * qty);
     const margin = Number(r.gross) > 0 ? (trueProfit / Number(r.gross)) * 100 : 0;
@@ -1472,14 +1476,14 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
     e.preventDefault(); 
     if (!formData.gross) return; 
     onAdd(formData); 
-    setFormData({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', ebay: '', ad: '', shipping: '', state: '' }); 
+    setFormData({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', salesTax: '', ebay: '', ad: '', shipping: '', state: '' }); 
     setShowFees(false);
   };
   const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item }); };
   const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
   const handleExport = () => {
-    const headers = ['Date', 'Order #', 'State', 'Description', 'Qty', 'Gross', 'eBay Fee', 'Ad Fee', 'Shipping', 'Net Payout', 'True Profit', 'Margin %'];
-    const data = sortedRevenues.map(r => [r.date, r.orderNum, r.state, r.desc, r.qty, r.gross, r.ebay || 0, r.ad || 0, r.shipping || 0, r.net, r.trueProfit, r.margin.toFixed(1)]);
+    const headers = ['Date', 'Order #', 'State', 'Description', 'Qty', 'Total Paid (Gross)', 'Sales Tax', 'eBay Fee', 'Ad Fee', 'Shipping', 'Net Payout', 'True Profit', 'Margin %'];
+    const data = sortedRevenues.map(r => [r.date, r.orderNum, r.state, r.desc, r.qty, r.gross, r.salesTax || 0, r.ebay || 0, r.ad || 0, r.shipping || 0, r.net, r.trueProfit, r.margin.toFixed(1)]);
     exportToCsv('Apex_Revenues.csv', [headers, ...data]);
   };
 
@@ -1491,35 +1495,154 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       const text = evt.target.result;
       const parsed = parseCSV(text);
       let headerIdx = 0;
-      while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].includes('Order Number'))) headerIdx++;
-      if (headerIdx >= parsed.length) { alert("Could not find standard eBay headers in this CSV."); return; }
+      
+      // Find the header row
+      while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].includes('Order Number'))) {
+        headerIdx++;
+      }
+      
+      if (headerIdx >= parsed.length) { 
+        alert("Could not find standard eBay headers (e.g., 'Order Number') in this CSV."); 
+        return; 
+      }
+      
       const headers = parsed[headerIdx];
-      const dateIdx = headers.indexOf('Sale Date'); const orderIdx = headers.indexOf('Order Number');
-      const titleIdx = headers.indexOf('Item Title'); const soldForIdx = headers.indexOf('Sold For');
-      const shipHandIdx = headers.indexOf('Shipping And Handling'); const qtyIdx = headers.indexOf('Quantity');
-      const stateIdx = headers.indexOf('Ship To State');
+      
+      // Smart fuzzy matching for flexible headers
+      const findHeader = (str) => headers.findIndex(h => h && h.toLowerCase().includes(str.toLowerCase()));
+      
+      const dateIdx = findHeader('Sale Date'); 
+      const orderIdx = findHeader('Order Number');
+      const titleIdx = findHeader('Item Title'); 
+      const qtyIdx = findHeader('Quantity');
+      
+      // Target requested specific columns
+      const stateIdx = findHeader('Ship To State');
+      const shipHandIdx = findHeader('Shipping And Handling');
+      const taxIdx = headers.findIndex(h => h && (h.toLowerCase().includes('sales tax paid') || h.toLowerCase().includes('ebay collected tax')));
+      
+      // Total Paid is usually our absolute gross (Item + Ship + Tax)
+      let totalPaidIdx = findHeader('Total Paid');
+      if (totalPaidIdx === -1) totalPaidIdx = findHeader('Total Price');
+      const soldForIdx = findHeader('Sold For');
+      
       const newRows = [];
+      let unchangedCount = 0;
+      let updatedCount = 0;
+      
       const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
+
       for (let i = headerIdx + 1; i < parsed.length; i++) {
         const row = parsed[i];
         if (row.length < headers.length || !row[orderIdx]) continue;
+        
+        const orderNum = row[orderIdx];
         const rawDate = row[dateIdx] || '';
         const dateParts = rawDate.split('-');
         let formattedDate = rawDate;
-        if (dateParts.length === 3) formattedDate = `20${dateParts[2]}-${months[dateParts[0]] || '01'}-${dateParts[1].padStart(2, '0')}`;
+        if (dateParts.length === 3) {
+          formattedDate = `20${dateParts[2]}-${months[dateParts[0]] || '01'}-${dateParts[1].padStart(2, '0')}`;
+        }
+        
         const cleanNum = (str) => Number((str || '').replace(/[^0-9.-]+/g,""));
-        const gross = cleanNum(row[soldForIdx]) + cleanNum(row[shipHandIdx]);
         const qty = qtyIdx > -1 ? (cleanNum(row[qtyIdx]) || 1) : 1;
         const state = stateIdx > -1 ? (row[stateIdx] || '').toUpperCase().trim() : '';
-        newRows.push({ id: Date.now() + i, date: formattedDate, orderNum: row[orderIdx], desc: row[titleIdx], state, qty, gross: gross.toFixed(2), ebay: '', ad: '', shipping: '' });
+        const salesTax = taxIdx > -1 ? cleanNum(row[taxIdx]) : 0;
+        const desc = row[titleIdx] || 'eBay Sale';
+
+        let gross = 0;
+        if (totalPaidIdx > -1) {
+          gross = cleanNum(row[totalPaidIdx]);
+        } else {
+          // Fallback if Total Paid is missing
+          gross = cleanNum(row[soldForIdx]) + (shipHandIdx > -1 ? cleanNum(row[shipHandIdx]) : 0) + salesTax;
+        }
+        
+        // --- SMART SYNC OVERWRITE ENGINE ---
+        const existingRecord = revenues.find(r => r.orderNum === orderNum);
+        
+        if (existingRecord) {
+          let needsUpdate = false;
+          let updates = {};
+          
+          // Force overwrite specific imported columns to perfectly match eBay
+          if (gross > 0 && Number(existingRecord.gross || 0) !== gross) {
+            updates.gross = gross.toFixed(2);
+            needsUpdate = true;
+          }
+          if (salesTax >= 0 && Number(existingRecord.salesTax || 0) !== salesTax) {
+            updates.salesTax = salesTax.toFixed(2);
+            needsUpdate = true;
+          }
+          if (state && existingRecord.state !== state) {
+            updates.state = state;
+            needsUpdate = true;
+          }
+          if (qty > 0 && Number(existingRecord.qty || 1) !== qty) {
+            updates.qty = qty;
+            needsUpdate = true;
+          }
+          
+          // Update generic descriptions with the actual item title
+          if (!existingRecord.desc || existingRecord.desc === 'eBay Sale') {
+             if(desc && desc !== 'eBay Sale' && existingRecord.desc !== desc) {
+                updates.desc = desc;
+                needsUpdate = true;
+             }
+          }
+
+          if (needsUpdate) {
+            newRows.push({
+              ...existingRecord,
+              ...updates,
+              isUpdate: true 
+            });
+            updatedCount++;
+          } else {
+            unchangedCount++;
+          }
+          continue;
+        }
+
+        newRows.push({ 
+          id: Date.now() + i, 
+          date: formattedDate, 
+          orderNum: orderNum, 
+          desc: desc, 
+          state: state,
+          qty: qty,
+          gross: gross.toFixed(2), 
+          salesTax: salesTax.toFixed(2), 
+          ebay: '', 
+          ad: '', 
+          shipping: '',
+          isUpdate: false
+        });
       }
+      
+      setImportStats({ total: parsed.length - headerIdx - 1, unchanged: unchangedCount, updated: updatedCount, new: newRows.filter(r => !r.isUpdate).length });
       setImportPreview(newRows);
     };
     reader.readAsText(file);
-    e.target.value = '';
+    e.target.value = ''; 
   };
 
-  const confirmImport = () => { importPreview.forEach(r => { onAdd({ date: r.date, orderNum: r.orderNum, state: r.state, desc: r.desc, qty: r.qty, gross: r.gross, ebay: r.ebay, ad: r.ad, shipping: r.shipping }); }); setImportPreview(null); };
+  const confirmImport = () => { 
+    importPreview.forEach(r => { 
+      const payload = { ...r };
+      delete payload.isUpdate;
+      delete payload.net;
+      delete payload.trueProfit;
+      delete payload.margin;
+
+      if (r.isUpdate) {
+        onUpdate(r.id, payload);
+      } else {
+        onAdd(payload); 
+      }
+    }); 
+    setImportPreview(null); 
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in">
@@ -1527,31 +1650,54 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-[2rem] shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-spring-in border border-zinc-200/50">
             <div className="p-8 border-b border-zinc-100 flex justify-between items-center">
-              <div><h2 className="text-xl font-bold tracking-tight text-zinc-900">Review Import</h2></div>
+              <div>
+                <h2 className="text-xl font-bold tracking-tight text-zinc-900">Review Import & Overwrites</h2>
+                <p className="text-sm text-zinc-500 mt-1">
+                  Found <strong className="text-emerald-600">{importStats.new} new</strong> sales and <strong className="text-amber-500">{importStats.updated} updates</strong> to existing records. Skipped {importStats.unchanged} fully matched orders.
+                </p>
+              </div>
               <button onClick={() => setImportPreview(null)} className="text-zinc-400 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200 p-2 rounded-full transition-colors"><X size={20}/></button>
             </div>
             <div className="overflow-y-auto p-8 bg-[#fbfbfd] flex-1">
               <div className="bg-white rounded-2xl border border-zinc-100 overflow-hidden shadow-sm">
                 <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead className="bg-zinc-50 border-b border-zinc-100">
-                    <tr><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Date</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Order</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 w-1/4">Item</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 text-center">Qty</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 text-right">Gross</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">eBay Fee $</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Ad Fee $</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Ship $</th></tr>
+                    <tr><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Date</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Order</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 w-1/4">Item</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 text-center">Qty</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 text-right">Total Paid</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 text-right">Tax</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">eBay Fee $</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Ad Fee $</th><th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Ship $</th></tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-50">
-                    {importPreview.map(r => (
-                      <tr key={r.id} className="hover:bg-zinc-50/50">
-                        <td className="px-6 py-3 font-medium text-zinc-500">{r.date}</td><td className="px-6 py-3 font-mono text-[11px] text-zinc-400">{r.orderNum}</td><td className="px-6 py-3 truncate max-w-xs font-medium text-zinc-900" title={r.desc}>{r.desc}</td><td className="px-6 py-3 text-center font-bold text-zinc-900">{r.qty}</td><td className="px-6 py-3 text-right font-semibold">{formatCurrency(r.gross)}</td>
-                        <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.ebay} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ebay: e.target.value } : pr))}/></td>
-                        <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.ad} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ad: e.target.value } : pr))}/></td>
-                        <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.shipping} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, shipping: e.target.value } : pr))}/></td>
-                      </tr>
-                    ))}
+                    {importPreview.length === 0 ? (
+                      <tr><td colSpan="9" className="p-8 text-center text-zinc-500 font-medium">No updates or new records needed. Ledger is perfectly in sync!</td></tr>
+                    ) : (
+                      importPreview.map(r => (
+                        <tr key={r.id} className="hover:bg-zinc-50/50">
+                          <td className="px-6 py-3 font-medium text-zinc-500">{r.date}</td>
+                          <td className="px-6 py-3 font-mono text-[11px] text-zinc-500 flex items-center">
+                            {r.isUpdate ? (
+                              <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded mr-2 font-bold text-[9px] shadow-sm">OVERWRITE</span>
+                            ) : (
+                              <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded mr-2 font-bold text-[9px] shadow-sm">NEW</span>
+                            )}
+                            {r.orderNum}
+                          </td>
+                          <td className="px-6 py-3 truncate max-w-xs font-medium text-zinc-900" title={r.desc}>{r.desc}</td>
+                          <td className="px-6 py-3 text-center font-bold text-zinc-900">{r.qty}</td>
+                          <td className="px-6 py-3 text-right font-semibold">{formatCurrency(r.gross)}</td>
+                          <td className="px-6 py-3 text-right font-medium text-zinc-500">{formatCurrency(r.salesTax)}</td>
+                          <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.ebay} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ebay: e.target.value } : pr))}/></td>
+                          <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.ad} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ad: e.target.value } : pr))}/></td>
+                          <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.shipping} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, shipping: e.target.value } : pr))}/></td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
             <div className="p-6 border-t border-zinc-100 bg-white flex justify-end space-x-3">
               <button onClick={() => setImportPreview(null)} className="px-6 py-3 rounded-xl text-zinc-500 hover:bg-zinc-100 font-semibold transition-colors">Cancel</button>
-              <button onClick={confirmImport} className="px-8 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-semibold flex items-center transition-all hover:-translate-y-0.5 shadow-md"><Check size={18} className="mr-2"/> Save {importPreview.length} Orders</button>
+              <button onClick={confirmImport} disabled={importPreview.length === 0} className="px-8 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-300 text-white font-semibold flex items-center transition-all hover:-translate-y-0.5 shadow-md">
+                <Check size={18} className="mr-2"/> Save {importPreview.length} Records
+              </button>
             </div>
           </div>
         </div>
@@ -1559,28 +1705,29 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
 
       <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
         <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Manual Sale</h2>
-        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-8 gap-4">
-          <input type="date" className={`${inlineInputStyle} col-span-1`} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-4 items-end">
+          <input type="date" className={`${inlineInputStyle} col-span-1`} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required title="Date" />
           <input type="text" placeholder="Order #" className={`${inlineInputStyle} col-span-1`} value={formData.orderNum} onChange={e => setFormData({...formData, orderNum: e.target.value})} />
           <input type="text" maxLength="2" placeholder="State (AZ)" className={`${inlineInputStyle} col-span-1`} value={formData.state} onChange={e => setFormData({...formData, state: e.target.value.toUpperCase()})} />
-          <input type="text" placeholder="Description" className={`${inlineInputStyle} col-span-1 sm:col-span-1`} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
-          <input type="number" step="0.01" placeholder="Gross ($)" className={inlineInputStyle} value={formData.gross} onChange={e => setFormData({...formData, gross: e.target.value})} required />
+          <input type="text" placeholder="Description" className={`${inlineInputStyle} col-span-1`} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
+          <input type="number" step="0.01" placeholder="Total Paid ($)" className={`${inlineInputStyle} col-span-1`} value={formData.gross} onChange={e => setFormData({...formData, gross: e.target.value})} required />
           
           {!showFees ? (
-            <div className="md:col-span-3 flex items-center">
+            <div className="lg:col-span-3 flex items-center w-full">
               <button type="button" onClick={() => setShowFees(true)} className="w-full py-2 border border-dashed border-zinc-200 rounded-lg text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all flex justify-center items-center">
-                <Plus size={14} className="mr-1.5" /> Add Fees & Shipping
+                <Plus size={14} className="mr-1.5" /> Add Tax, Fees, Ship
               </button>
             </div>
           ) : (
-            <>
-              <input type="number" step="0.01" placeholder="eBay Fee" className={`${inlineInputStyle} animate-in fade-in zoom-in-95`} value={formData.ebay} onChange={e => setFormData({...formData, ebay: e.target.value})} />
-              <input type="number" step="0.01" placeholder="Ad Fee" className={`${inlineInputStyle} animate-in fade-in zoom-in-95`} value={formData.ad} onChange={e => setFormData({...formData, ad: e.target.value})} />
-              <input type="number" step="0.01" placeholder="Ship ($)" className={`${inlineInputStyle} animate-in fade-in zoom-in-95`} value={formData.shipping} onChange={e => setFormData({...formData, shipping: e.target.value})} />
-            </>
+            <div className="lg:col-span-3 grid grid-cols-4 gap-2">
+              <input type="number" step="0.01" placeholder="Tax" className={`${inlineInputStyle} animate-in fade-in zoom-in-95 px-2`} value={formData.salesTax} onChange={e => setFormData({...formData, salesTax: e.target.value})} />
+              <input type="number" step="0.01" placeholder="eBay" className={`${inlineInputStyle} animate-in fade-in zoom-in-95 px-2`} value={formData.ebay} onChange={e => setFormData({...formData, ebay: e.target.value})} />
+              <input type="number" step="0.01" placeholder="Ad" className={`${inlineInputStyle} animate-in fade-in zoom-in-95 px-2`} value={formData.ad} onChange={e => setFormData({...formData, ad: e.target.value})} />
+              <input type="number" step="0.01" placeholder="Ship" className={`${inlineInputStyle} animate-in fade-in zoom-in-95 px-2`} value={formData.shipping} onChange={e => setFormData({...formData, shipping: e.target.value})} />
+            </div>
           )}
 
-          <button type="submit" className="md:col-span-8 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 shadow-md mt-2"><Plus size={18} className="mr-2" /> Add Record</button>
+          <button type="submit" className="lg:col-span-8 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 shadow-md mt-2"><Plus size={18} className="mr-2" /> Add Record</button>
         </form>
       </div>
 
@@ -1605,8 +1752,8 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
                 <SortableHeader label="ST" sortKey="state" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
                 <SortableHeader label="Qty" sortKey="qty" currentSort={sortConfig} requestSort={requestSort} alignRight />
-                <SortableHeader label="Gross" sortKey="gross" currentSort={sortConfig} requestSort={requestSort} alignRight />
-                <SortableHeader label="Fees/Ship" sortKey="ebay" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-zinc-400" />
+                <SortableHeader label="Total Paid" sortKey="gross" currentSort={sortConfig} requestSort={requestSort} alignRight />
+                <SortableHeader label="Fees/Tax/Ship" sortKey="ebay" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-zinc-400" />
                 <SortableHeader label="Net" sortKey="net" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-blue-600" />
                 <SortableHeader label="True Profit" sortKey="trueProfit" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-emerald-600" />
                 <SortableHeader label="Margin" sortKey="margin" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-emerald-600" />
@@ -1617,7 +1764,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
               {sortedRevenues.length === 0 ? (
                 <EmptyState icon={Inbox} title="No sales logged yet" message="Log your first sale manually or import an eBay CSV to unlock unit economics." colSpan="11" />
               ) : sortedRevenues.map(r => {
-                const totalFees = Number(r.ebay || 0) + Number(r.ad || 0) + Number(r.shipping || 0);
+                const totalFees = Number(r.ebay || 0) + Number(r.ad || 0) + Number(r.shipping || 0) + Number(r.salesTax || 0);
                 return editingId === r.id ? (
                   <tr key={r.id} className="bg-blue-50/30">
                     <td className="px-2 py-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
@@ -1625,11 +1772,12 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
                     <td className="px-2 py-2"><input type="text" maxLength="2" className={`${inlineInputStyle} w-12`} value={editForm.state} onChange={ev => setEditForm({...editForm, state: ev.target.value.toUpperCase()})} /></td>
                     <td className="px-2 py-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
                     <td className="px-2 py-2"><input type="number" min="1" className={`${inlineInputStyle} w-16 text-center`} value={editForm.qty} onChange={ev => setEditForm({...editForm, qty: ev.target.value})} /></td>
-                    <td className="px-2 py-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.gross} onChange={ev => setEditForm({...editForm, gross: ev.target.value})} /></td>
+                    <td className="px-2 py-2"><input type="number" step="0.01" className={`${inlineInputStyle} w-20`} value={editForm.gross} onChange={ev => setEditForm({...editForm, gross: ev.target.value})} /></td>
                     <td className="px-2 py-2 flex space-x-1">
-                      <input type="number" step="0.01" className={`${inlineInputStyle} w-16`} placeholder="eBay" title="eBay Fee" value={editForm.ebay} onChange={ev => setEditForm({...editForm, ebay: ev.target.value})} />
-                      <input type="number" step="0.01" className={`${inlineInputStyle} w-16`} placeholder="Ad" title="Ad Fee" value={editForm.ad} onChange={ev => setEditForm({...editForm, ad: ev.target.value})} />
-                      <input type="number" step="0.01" className={`${inlineInputStyle} w-16`} placeholder="Ship" title="Shipping" value={editForm.shipping} onChange={ev => setEditForm({...editForm, shipping: ev.target.value})} />
+                      <input type="number" step="0.01" className={`${inlineInputStyle} w-14 px-1`} placeholder="Tax" title="Sales Tax" value={editForm.salesTax} onChange={ev => setEditForm({...editForm, salesTax: ev.target.value})} />
+                      <input type="number" step="0.01" className={`${inlineInputStyle} w-14 px-1`} placeholder="eBay" title="eBay Fee" value={editForm.ebay} onChange={ev => setEditForm({...editForm, ebay: ev.target.value})} />
+                      <input type="number" step="0.01" className={`${inlineInputStyle} w-14 px-1`} placeholder="Ad" title="Ad Fee" value={editForm.ad} onChange={ev => setEditForm({...editForm, ad: ev.target.value})} />
+                      <input type="number" step="0.01" className={`${inlineInputStyle} w-14 px-1`} placeholder="Ship" title="Shipping" value={editForm.shipping} onChange={ev => setEditForm({...editForm, shipping: ev.target.value})} />
                     </td>
                     <td className="px-6 py-4 text-right text-zinc-300">-</td>
                     <td className="px-6 py-4 text-right text-zinc-300">-</td>
@@ -1647,7 +1795,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
                     <td className="px-6 py-4 truncate max-w-[200px] font-semibold text-zinc-800" title={r.desc}>{r.desc}</td>
                     <td className="px-6 py-4 text-center font-bold text-zinc-900">{r.qty}</td>
                     <td className="px-6 py-4 text-right font-medium text-zinc-600">{formatCurrency(r.gross)}</td>
-                    <td className="px-6 py-4 text-right text-zinc-400" title={`eBay: ${formatCurrency(r.ebay || 0)} | Ad: ${formatCurrency(r.ad || 0)} | Ship: ${formatCurrency(r.shipping || 0)}`}>{formatCurrency(totalFees)}</td>
+                    <td className="px-6 py-4 text-right text-zinc-400" title={`Tax: ${formatCurrency(r.salesTax || 0)} | eBay: ${formatCurrency(r.ebay || 0)} | Ad: ${formatCurrency(r.ad || 0)} | Ship: ${formatCurrency(r.shipping || 0)}`}>{formatCurrency(totalFees)}</td>
                     <td className="px-6 py-4 text-right font-semibold text-blue-600">{formatCurrency(r.net)}</td>
                     <td className="px-6 py-4 text-right font-bold text-emerald-600 tracking-tight">{formatCurrency(r.trueProfit)}</td>
                     <td className="px-6 py-4 text-right font-bold text-emerald-600 tracking-tight">{r.margin.toFixed(0)}%</td>
