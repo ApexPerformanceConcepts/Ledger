@@ -1407,7 +1407,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       let headerIdx = 0;
       
       // Find the header row (Financial or Standard Format)
-      while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].some(h => h.includes('Order Number') || h.includes('Order number')))) {
+      while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].some(h => h && (h.includes('Order Number') || h.includes('Order number'))))) {
         headerIdx++;
       }
       
@@ -1421,11 +1421,11 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       
       // Identify all possible columns
       const dateIdx = findHeader('Transaction creation date') > -1 ? findHeader('Transaction creation date') : findHeader('Sale Date'); 
-      const orderIdx = findHeader('Order Number');
+      const orderIdx = findHeader('Order number');
       const typeIdx = findHeader('Type'); 
-      const titleIdx = findHeader('Item Title'); 
+      const titleIdx = findHeader('Item title'); 
       const qtyIdx = findHeader('Quantity');
-      const stateIdx = findHeader('Ship To State') > -1 ? findHeader('Ship To State') : findHeader('Buyer State');
+      const stateIdx = findHeader('Ship to province/region/state') > -1 ? findHeader('Ship to province/region/state') : findHeader('Ship to State');
       const taxIdx = headers.findIndex(h => h && (h.toLowerCase().includes('sales tax') || h.toLowerCase().includes('ebay collected tax')));
       
       let grossIdx = findHeader('Gross transaction amount');
@@ -1433,8 +1433,17 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       if (grossIdx === -1) grossIdx = findHeader('Total Price');
       const soldForIdx = findHeader('Sold For');
       const shipHandIdx = findHeader('Shipping And Handling');
-      const feeIdx = findHeader('Fee');
       const netIdx = findHeader('Net amount');
+      const descColIdx = findHeader('Description');
+
+      // Dynamically find ALL fee columns (eBay splits fees across 5+ columns now)
+      const feeIndices = [];
+      headers.forEach((h, idx) => {
+        const headerStr = (h || '').toLowerCase();
+        if (headerStr.includes('fee')) {
+          feeIndices.push(idx);
+        }
+      });
 
       const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
       
@@ -1443,32 +1452,53 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
 
       for (let i = headerIdx + 1; i < parsed.length; i++) {
         const row = parsed[i];
-        if (row.length < headers.length || !row[orderIdx]) continue;
+        if (row.length < headers.length) continue;
         
-        const orderNum = row[orderIdx];
-        if (!orderNum || orderNum.trim() === '' || orderNum.startsWith('--')) continue;
+        let orderNum = row[orderIdx] ? row[orderIdx].trim() : '';
+        // Handle unattached shipping labels and fees
+        if (!orderNum || orderNum.startsWith('--')) {
+           const refIdx = findHeader('Reference ID');
+           let refId = refIdx > -1 ? row[refIdx] : '';
+           if (refId && refId !== '--') orderNum = refId;
+           else orderNum = 'Misc-' + i;
+        }
 
         const type = typeIdx > -1 ? (row[typeIdx] || '').toLowerCase() : 'order';
         if (type === 'payout' || type === 'transfer') continue; // Ignore bank transfers
         
         if (!ordersMap.has(orderNum)) {
           ordersMap.set(orderNum, {
-            orderNum: orderNum, date: '', desc: '', state: '', qty: 0, gross: 0, salesTax: 0, ebay: 0, ad: 0, shipping: 0
+            orderNum: orderNum.startsWith('Misc-') ? '' : orderNum, 
+            date: '', desc: '', state: '', qty: 0, gross: 0, salesTax: 0, ebay: 0, ad: 0, shipping: 0
           });
         }
         
         const rec = ordersMap.get(orderNum);
         const cleanNum = (str) => Number((str || '').replace(/[^0-9.-]+/g,""));
         
-        let rowGross = grossIdx > -1 ? cleanNum(row[grossIdx]) : (soldForIdx > -1 ? cleanNum(row[soldForIdx]) + (shipHandIdx > -1 ? cleanNum(row[shipHandIdx]) : 0) : 0);
-        let rowTax = taxIdx > -1 ? cleanNum(row[taxIdx]) : 0;
-        let rowFee = feeIdx > -1 ? cleanNum(row[feeIdx]) : 0;
-        let rowNet = netIdx > -1 ? cleanNum(row[netIdx]) : 0;
+        let rawGross = grossIdx > -1 ? cleanNum(row[grossIdx]) : (soldForIdx > -1 ? cleanNum(row[soldForIdx]) + (shipHandIdx > -1 ? cleanNum(row[shipHandIdx]) : 0) : 0);
+        let rawTax = taxIdx > -1 ? cleanNum(row[taxIdx]) : 0;
+        let rawNet = netIdx > -1 ? cleanNum(row[netIdx]) : 0;
         let rowQty = qtyIdx > -1 ? cleanNum(row[qtyIdx]) : 0;
+        
+        let sumFees = 0;
+        feeIndices.forEach(idx => sumFees += cleanNum(row[idx]));
+
+        const desc = descColIdx > -1 ? (row[descColIdx] || '').trim() : '';
+        const title = titleIdx > -1 ? (row[titleIdx] || '').trim() : '';
+        
+        // Ensure eBay's empty "--" cells don't lock in as descriptions
+        const cleanTitle = title === '--' ? '' : title;
+        const cleanDesc = desc === '--' ? '' : desc;
+
+        // Synthesize true gross if this is the financial report format 
+        // (eBay excludes tax from Gross in financial reports, but our UI expects it for absolute Total Paid)
+        let isFinancialGross = headers[grossIdx] && headers[grossIdx].toLowerCase() === 'gross transaction amount';
+        let adjustedGross = isFinancialGross ? rawGross + rawTax : rawGross;
 
         // 1. Populate Core Information
         if (type.includes('order') || type === 'sale' || !rec.date) {
-          if (row[dateIdx] && !rec.date) {
+          if (row[dateIdx] && !rec.date && row[dateIdx] !== '--') {
             const rawDate = row[dateIdx];
             const d = new Date(rawDate);
             if (!isNaN(d.getTime())) {
@@ -1479,26 +1509,34 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
                else rec.date = rawDate;
             }
           }
-          if (titleIdx > -1 && row[titleIdx] && (!rec.desc || rec.desc === 'eBay Sale')) rec.desc = row[titleIdx];
-          if (stateIdx > -1 && row[stateIdx] && !rec.state) rec.state = row[stateIdx].toUpperCase().trim();
+          if (cleanTitle && (!rec.desc || rec.desc === 'eBay Sale' || rec.desc.startsWith('Shipping') || rec.desc.startsWith('Ad') || rec.desc === '--')) {
+              rec.desc = cleanTitle;
+          }
+          if (stateIdx > -1 && row[stateIdx] && row[stateIdx] !== '--' && !rec.state) {
+              rec.state = row[stateIdx].toUpperCase().trim();
+          }
           if (rowQty > 0 && (type.includes('order') || type === 'sale')) rec.qty += rowQty;
         }
 
         // 2. Aggregate Financial Splits
         if (type.includes('shipping label')) {
-          rec.shipping += Math.abs(rowNet || rowGross);
-        } else if (type.includes('ad fee') || type.includes('promoted')) {
-          rec.ad += Math.abs(rowNet || rowFee || rowGross);
+          rec.shipping += Math.abs(rawNet || rawGross);
+          if(!rec.desc || rec.desc === '--') rec.desc = 'Shipping Label';
+        } else if (type.includes('other fee') || type.includes('ad fee') || cleanDesc.toLowerCase().includes('promoted')) {
+          rec.ad += Math.abs(rawNet || sumFees || rawGross);
+          if(!rec.desc || rec.desc === '--') rec.desc = 'Ad Fee / Other';
         } else if (type.includes('refund')) {
-          rec.gross += rowGross; // rowGross is usually negative on a refund
-          rec.salesTax -= Math.abs(rowTax);
-          if (rowFee > 0) rec.ebay -= rowFee; 
-          else if (rowFee < 0) rec.ebay += Math.abs(rowFee);
+          rec.gross += adjustedGross; // rawGross is negative on refunds, so this properly subtracts
+          rec.salesTax -= Math.abs(rawTax);
+          rec.ebay -= Math.abs(sumFees); // Fees credited back, reduce expenses
         } else {
           // Standard Order
-          rec.gross += rowGross;
-          rec.salesTax += Math.abs(rowTax); 
-          rec.ebay += Math.abs(rowFee); // Fees are usually negative in CSV, we log them as positive expenses
+          rec.gross += adjustedGross;
+          rec.salesTax += Math.abs(rawTax); 
+          rec.ebay += Math.abs(sumFees); // Fees are usually negative in CSV, we log them as positive expenses
+          if (!rec.desc || rec.desc === 'Shipping Label' || rec.desc === 'Ad Fee / Other' || rec.desc === '--') {
+             rec.desc = cleanTitle || cleanDesc || 'eBay Sale';
+          }
         }
       }
 
