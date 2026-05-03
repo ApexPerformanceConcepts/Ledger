@@ -1436,13 +1436,20 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       const netIdx = findHeader('Net amount');
       const descColIdx = findHeader('Description');
 
-      // Dynamically find ALL fee columns (eBay splits fees across 5+ columns now)
-      const feeIndices = [];
+      // Dynamically find ALL fee columns, explicitly targeting Final Value Fees
+      const feeIndices = new Set();
       headers.forEach((h, idx) => {
         const headerStr = (h || '').toLowerCase();
-        if (headerStr.includes('fee')) {
-          feeIndices.push(idx);
+        if (headerStr.includes('fee') || headerStr.includes('final value')) {
+          feeIndices.add(idx);
         }
+      });
+      
+      // Explicit fallbacks for known exact columns just to be 100% certain
+      const specificFeeCols = ['Final Value Fee - variable', 'Final Value Fee - fixed', 'Regulatory operating fee', 'International fee'];
+      specificFeeCols.forEach(feeName => {
+         const idx = findHeader(feeName);
+         if (idx > -1) feeIndices.add(idx);
       });
 
       const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
@@ -1474,9 +1481,18 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         }
         
         const rec = ordersMap.get(orderNum);
-        const cleanNum = (str) => {
-          const num = Number((str || '').replace(/[^0-9.-]+/g, ""));
-          return isNaN(num) ? 0 : num;
+        
+        // Bulletproof Number Parser (Handles accounting formats like "(5.99)", missing signs, and dashes)
+        const cleanNum = (val) => {
+          if (!val) return 0;
+          if (typeof val === 'number') return val;
+          let str = val.toString().trim();
+          if (str === '--' || str === '-' || str === '') return 0;
+          const isNegative = str.startsWith('-') || (str.startsWith('(') && str.endsWith(')'));
+          const cleaned = str.replace(/[^0-9.]/g, '');
+          const num = parseFloat(cleaned);
+          if (isNaN(num)) return 0;
+          return isNegative ? -num : num;
         };
         
         let rawGross = grossIdx > -1 ? cleanNum(row[grossIdx]) : (soldForIdx > -1 ? cleanNum(row[soldForIdx]) + (shipHandIdx > -1 ? cleanNum(row[shipHandIdx]) : 0) : 0);
@@ -1485,7 +1501,8 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         let rowQty = qtyIdx > -1 ? cleanNum(row[qtyIdx]) : 0;
         
         let sumFees = 0;
-        feeIndices.forEach(idx => sumFees += cleanNum(row[idx]));
+        // Absolute value ensures negative/positive fees stack correctly as a positive total expense
+        feeIndices.forEach(idx => sumFees += Math.abs(cleanNum(row[idx])));
 
         const desc = descColIdx > -1 ? (row[descColIdx] || '').trim() : '';
         const title = titleIdx > -1 ? (row[titleIdx] || '').trim() : '';
