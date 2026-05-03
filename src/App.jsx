@@ -1132,19 +1132,65 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
 
   const addRow = (e) => { e.preventDefault(); if (!formData.qty) return; onAdd(formData); setFormData({ ...formData, qty: '' }); };
 
-  const StockCard = ({ title, amount, unit, isWarning, daysRemaining, velocity }) => (
-    <div className={`rounded-3xl border p-6 flex flex-col justify-center transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${isWarning ? 'bg-amber-50/50 border-amber-200/60' : 'bg-white/80 backdrop-blur-md border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]'}`}>
-      <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center justify-between">
-        {title} {isWarning && <AlertTriangle size={14} className="text-amber-500" />}
-      </h3>
-      <div className={`text-3xl font-bold tracking-tighter mt-3 ${isWarning ? 'text-amber-700' : 'text-zinc-900'}`}>{Number(amount).toLocaleString()} <span className="text-sm font-medium tracking-normal text-zinc-400 ml-1">{unit}</span></div>
-      {velocity > 0 && (
-        <div className={`text-[11px] mt-3 font-bold uppercase tracking-wider ${daysRemaining <= 7 ? 'text-amber-600' : 'text-zinc-400'}`}>
-          {daysRemaining > 0 && daysRemaining !== Infinity ? `~${daysRemaining} days remaining` : (daysRemaining === 0 ? 'Out of stock' : 'Adequate supply')}
+  const handleStockAdjustment = (materialName, diff) => {
+    onAdd({
+      date: new Date().toISOString().split('T')[0],
+      material: materialName,
+      qty: diff,
+      type: 'Audit' // Special flag so we know this wasn't a standard purchase
+    });
+  };
+
+  const StockCard = ({ title, materialName, amount, unit, isWarning, daysRemaining, velocity, onAdjust }) => {
+    const cleanAmount = Number.isInteger(amount) ? amount : Number(Number(amount).toFixed(2));
+    const [isEditing, setIsEditing] = useState(false);
+    const [editVal, setEditVal] = useState(cleanAmount);
+
+    useEffect(() => {
+      if (!isEditing) setEditVal(Number.isInteger(amount) ? amount : Number(Number(amount).toFixed(2)));
+    }, [amount, isEditing]);
+
+    const handleSave = () => {
+      const diff = Number(editVal) - cleanAmount;
+      if (diff !== 0) {
+        onAdjust(materialName, diff);
+      }
+      setIsEditing(false);
+    };
+
+    return (
+      <div className={`rounded-3xl border p-6 flex flex-col justify-center transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] group ${isWarning ? 'bg-amber-50/50 border-amber-200/60' : 'bg-white/80 backdrop-blur-md border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]'}`}>
+        <div className="flex justify-between items-start">
+          <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center">
+            {title} {isWarning && <AlertTriangle size={14} className="text-amber-500 ml-1" />}
+          </h3>
+          {!isEditing && (
+            <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" title="Audit/Adjust Inventory">
+              <Edit2 size={14} />
+            </button>
+          )}
         </div>
-      )}
-    </div>
-  );
+        
+        {isEditing ? (
+          <div className="mt-3 flex items-center space-x-2 animate-in fade-in zoom-in-95">
+            <input type="number" step="any" className="w-20 sm:w-24 border border-zinc-300 rounded-lg px-2 py-1.5 text-lg font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white" value={editVal} onChange={e => setEditVal(e.target.value)} autoFocus />
+            <button onClick={handleSave} className="bg-emerald-600 text-white p-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"><Check size={16} /></button>
+            <button onClick={() => setIsEditing(false)} className="bg-zinc-100 text-zinc-500 p-2 rounded-lg hover:bg-zinc-200 transition-colors"><X size={16} /></button>
+          </div>
+        ) : (
+          <div className={`text-3xl font-bold tracking-tighter mt-3 ${isWarning ? 'text-amber-700' : 'text-zinc-900'}`}>
+            {cleanAmount.toLocaleString()} <span className="text-sm font-medium tracking-normal text-zinc-400 ml-1">{unit}</span>
+          </div>
+        )}
+
+        {velocity > 0 && !isEditing && (
+          <div className={`text-[11px] mt-3 font-bold uppercase tracking-wider ${daysRemaining <= 7 ? 'text-amber-600' : 'text-zinc-400'}`}>
+            {daysRemaining > 0 && daysRemaining !== Infinity ? `~${daysRemaining} days remaining` : (daysRemaining === 0 ? 'Out of stock' : 'Adequate supply')}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in">
@@ -1161,14 +1207,14 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-        <StockCard title="Black PETG" amount={currentStock.blackPetg} unit="g" isWarning={runoutDays.blackPetg <= 7} daysRemaining={runoutDays.blackPetg} velocity={dailySalesVelocity} />
-        <StockCard title="White PETG" amount={currentStock.whitePetg} unit="g" isWarning={runoutDays.whitePetg <= 7} daysRemaining={runoutDays.whitePetg} velocity={dailySalesVelocity} />
-        <StockCard title="Concrete" amount={currentStock.concrete} unit="lbs" isWarning={runoutDays.concrete <= 7} daysRemaining={runoutDays.concrete} velocity={dailySalesVelocity} />
-        <StockCard title="Boxes" amount={currentStock.boxes} unit="qty" isWarning={runoutDays.boxes <= 7} daysRemaining={runoutDays.boxes} velocity={dailySalesVelocity} />
-        <StockCard title="Bubble Wrap" amount={currentStock.wrap} unit="qty" isWarning={runoutDays.wrap <= 7} daysRemaining={runoutDays.wrap} velocity={dailySalesVelocity} />
-        <StockCard title="Screws" amount={currentStock.screws} unit="sets" isWarning={runoutDays.screws <= 7} daysRemaining={runoutDays.screws} velocity={dailySalesVelocity} />
-        <StockCard title="Inserts" amount={currentStock.inserts} unit="sets" isWarning={runoutDays.inserts <= 7} daysRemaining={runoutDays.inserts} velocity={dailySalesVelocity} />
-        <StockCard title="Washers" amount={currentStock.washers} unit="sets" isWarning={runoutDays.washers <= 7} daysRemaining={runoutDays.washers} velocity={dailySalesVelocity} />
+        <StockCard title="Black PETG" materialName="Black PETG (grams)" amount={currentStock.blackPetg} unit="g" isWarning={runoutDays.blackPetg <= 7} daysRemaining={runoutDays.blackPetg} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
+        <StockCard title="White PETG" materialName="White PETG (grams)" amount={currentStock.whitePetg} unit="g" isWarning={runoutDays.whitePetg <= 7} daysRemaining={runoutDays.whitePetg} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
+        <StockCard title="Concrete" materialName="Concrete (lbs)" amount={currentStock.concrete} unit="lbs" isWarning={runoutDays.concrete <= 7} daysRemaining={runoutDays.concrete} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
+        <StockCard title="Boxes" materialName="Boxes (qty)" amount={currentStock.boxes} unit="qty" isWarning={runoutDays.boxes <= 7} daysRemaining={runoutDays.boxes} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
+        <StockCard title="Bubble Wrap" materialName="Bubble Wrap (qty)" amount={currentStock.wrap} unit="qty" isWarning={runoutDays.wrap <= 7} daysRemaining={runoutDays.wrap} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
+        <StockCard title="Screws" materialName="Screws (sets)" amount={currentStock.screws} unit="sets" isWarning={runoutDays.screws <= 7} daysRemaining={runoutDays.screws} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
+        <StockCard title="Inserts" materialName="Inserts (sets)" amount={currentStock.inserts} unit="sets" isWarning={runoutDays.inserts <= 7} daysRemaining={runoutDays.inserts} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
+        <StockCard title="Washers" materialName="Washers (sets)" amount={currentStock.washers} unit="sets" isWarning={runoutDays.washers <= 7} daysRemaining={runoutDays.washers} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
       </div>
 
       <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
@@ -1198,7 +1244,14 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
                 <EmptyState icon={PackageOpen} title="Warehouse Empty" message="Log your first material restock to activate production capacity tracking." colSpan="4" />
               ) : sortedRestocks.map(r => (
                   <tr key={r.id} className="hover:bg-zinc-50/50 transition-colors group">
-                    <td className="px-6 py-4 font-medium text-zinc-500">{r.date}</td><td className="px-6 py-4 font-semibold text-zinc-900">{r.material}</td><td className="px-6 py-4 text-right text-emerald-600 font-bold tracking-tight">+{Number(r.qty).toLocaleString()}</td>
+                    <td className="px-6 py-4 font-medium text-zinc-500">{r.date}</td>
+                    <td className="px-6 py-4 font-semibold text-zinc-900">
+                      {r.type === 'Audit' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded mr-2 font-bold text-[9px] shadow-sm tracking-wider">AUDIT</span>}
+                      {r.material}
+                    </td>
+                    <td className={`px-6 py-4 text-right font-bold tracking-tight ${Number(r.qty) > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {Number(r.qty) > 0 ? '+' : ''}{Number(r.qty).toLocaleString()}
+                    </td>
                     <td className="px-6 py-4 text-right"><button onClick={() => onDelete(r.id)} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button></td>
                   </tr>
               ))}
