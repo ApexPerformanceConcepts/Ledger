@@ -1474,7 +1474,10 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         }
         
         const rec = ordersMap.get(orderNum);
-        const cleanNum = (str) => Number((str || '').replace(/[^0-9.-]+/g,""));
+        const cleanNum = (str) => {
+          const num = Number((str || '').replace(/[^0-9.-]+/g, ""));
+          return isNaN(num) ? 0 : num;
+        };
         
         let rawGross = grossIdx > -1 ? cleanNum(row[grossIdx]) : (soldForIdx > -1 ? cleanNum(row[soldForIdx]) + (shipHandIdx > -1 ? cleanNum(row[shipHandIdx]) : 0) : 0);
         let rawTax = taxIdx > -1 ? cleanNum(row[taxIdx]) : 0;
