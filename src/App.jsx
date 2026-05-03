@@ -1132,34 +1132,6 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
 
   const addRow = (e) => { e.preventDefault(); if (!formData.qty) return; onAdd(formData); setFormData({ ...formData, qty: '' }); };
 
-  // --- AUTOMATED SUPPLIER BIDDING ENGINE (SUNLU PETG) ---
-  const supplyOptions = useMemo(() => {
-    const options = [
-      { id: 'amz4', size: 4, name: '4KG Bulk', platform: 'Amazon Prime', price: Number(cogs.liveAmz4kgPrice) || 52.99, shipping: 0.00, taxRate: 0.07, url: 'https://www.amazon.com/s?k=Sunlu+PETG+4kg+black' },
-      { id: 'ebay10', size: 10, name: '10KG Master', platform: 'eBay', price: Number(cogs.liveEbay10kgPrice) || 115.00, shipping: 0.00, taxRate: 0.07, url: 'https://www.ebay.com/sch/i.html?_nkw=Sunlu+PETG+10kg+black' }
-    ];
-    
-    const processed = options.map(opt => {
-      const tax = opt.price * opt.taxRate;
-      const total = opt.price + tax + opt.shipping;
-      const costPerKg = total / opt.size;
-      const yieldUnits = Math.floor((opt.size * 1000) / Math.max(1, cogs.blackGramsUsed));
-      const daysSupply = dailySalesVelocity > 0 ? Math.floor(yieldUnits / dailySalesVelocity) : '∞';
-      
-      return { ...opt, tax, total, costPerKg, yieldUnits, daysSupply };
-    });
-
-    const bestValueId = processed.reduce((min, p) => p.costPerKg < min.costPerKg ? p : min, processed[0]).id;
-
-    return processed.map(p => ({ ...p, isBestValue: p.id === bestValueId }));
-  }, [cogs.blackGramsUsed, cogs.liveAmz4kgPrice, cogs.liveEbay10kgPrice, dailySalesVelocity]);
-
-  const lastSyncText = useMemo(() => {
-    if (!cogs.lastPriceSync) return "Awaiting first sync...";
-    const date = cogs.lastPriceSync?.toDate ? cogs.lastPriceSync.toDate() : new Date(cogs.lastPriceSync);
-    return "Last synced: " + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-  }, [cogs.lastPriceSync]);
-
   const StockCard = ({ title, amount, unit, isWarning, daysRemaining, velocity }) => (
     <div className={`rounded-3xl border p-6 flex flex-col justify-center transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${isWarning ? 'bg-amber-50/50 border-amber-200/60' : 'bg-white/80 backdrop-blur-md border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]'}`}>
       <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center justify-between">
@@ -1197,68 +1169,6 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
         <StockCard title="Screws" amount={currentStock.screws} unit="sets" isWarning={runoutDays.screws <= 7} daysRemaining={runoutDays.screws} velocity={dailySalesVelocity} />
         <StockCard title="Inserts" amount={currentStock.inserts} unit="sets" isWarning={runoutDays.inserts <= 7} daysRemaining={runoutDays.inserts} velocity={dailySalesVelocity} />
         <StockCard title="Washers" amount={currentStock.washers} unit="sets" isWarning={runoutDays.washers <= 7} daysRemaining={runoutDays.washers} velocity={dailySalesVelocity} />
-      </div>
-
-      {/* NEW: Automated Supplier Engine */}
-      <div className={`bg-white/80 backdrop-blur-md rounded-3xl border p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] transition-all ${runoutDays.blackPetg <= 14 ? 'ring-2 ring-blue-500/20 shadow-xl' : 'border-zinc-100'}`}>
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
-          <div>
-            <h2 className="text-lg font-bold tracking-tight text-zinc-900 flex items-center">
-              Apex Procurement Engine <Sparkles size={16} className="text-blue-500 ml-2" />
-            </h2>
-            <p className="text-sm font-medium text-zinc-500 mt-1">
-              Live market scraping for <strong className="text-zinc-800">Sunlu 1.75mm PETG Black</strong> • <span className="text-xs text-blue-600 font-semibold ml-1">{lastSyncText}</span>
-            </p>
-          </div>
-          {runoutDays.blackPetg <= 14 && (
-            <div className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest animate-pulse border border-blue-200/50 w-max">
-              Reorder Recommended
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {supplyOptions.map((opt) => (
-            <div key={opt.id} className={`rounded-2xl border p-6 flex flex-col relative transition-all hover:-translate-y-1 ${opt.isBestValue ? 'bg-zinc-900 border-zinc-800 text-white shadow-lg' : 'bg-zinc-50 border-zinc-200/60 text-zinc-900 hover:shadow-md'}`}>
-              {opt.isBestValue && <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-sm">Best Value</div>}
-              
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className={`text-sm font-bold mb-1 ${opt.isBestValue ? 'text-zinc-100' : 'text-zinc-800'}`}>{opt.name}</h3>
-                  <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${opt.isBestValue ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-200 text-zinc-600'}`}>{opt.platform}</span>
-                </div>
-                <div className="text-right">
-                   <div className="text-3xl font-bold tracking-tighter">{formatCurrency(opt.total)}</div>
-                   <div className={`text-[10px] font-medium ${opt.isBestValue ? 'text-zinc-400' : 'text-zinc-500'}`}>incl. tax & ship</div>
-                </div>
-              </div>
-              
-              <div className="space-y-3 mt-auto text-sm font-medium">
-                <div className={`flex justify-between pb-3 border-b ${opt.isBestValue ? 'border-zinc-700 text-zinc-300' : 'border-zinc-200 text-zinc-500'}`}>
-                  <span>Cost per KG</span>
-                  <span className={`font-bold text-lg tracking-tight ${opt.isBestValue ? 'text-emerald-400' : 'text-emerald-600'}`}>{formatCurrency(opt.costPerKg)}</span>
-                </div>
-                <div className={`flex justify-between pb-3 border-b ${opt.isBestValue ? 'border-zinc-700 text-zinc-300' : 'border-zinc-200 text-zinc-500'}`}>
-                  <span>Yields</span>
-                  <span className={opt.isBestValue ? 'text-zinc-100 font-bold' : 'text-zinc-800 font-bold'}>{opt.yieldUnits} trainers</span>
-                </div>
-                <div className={`flex justify-between pt-1 ${opt.isBestValue ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                  <span>Lasts Approx</span>
-                  <span className={opt.isBestValue ? 'text-zinc-100 font-bold' : 'text-zinc-800 font-bold'}>{opt.daysSupply} days</span>
-                </div>
-              </div>
-
-              <a 
-                href={opt.url} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className={`mt-8 w-full py-3 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center justify-center transition-colors ${opt.isBestValue ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md' : 'bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-700'}`}
-              >
-                <ShoppingCart size={16} className="mr-2" /> View on {opt.platform}
-              </a>
-            </div>
-          ))}
-        </div>
       </div>
 
       <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
