@@ -1496,107 +1496,126 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       const parsed = parseCSV(text);
       let headerIdx = 0;
       
-      // Find the header row
-      while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].includes('Order Number'))) {
+      // Find the header row (Financial or Standard Format)
+      while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].some(h => h.includes('Order Number') || h.includes('Order number')))) {
         headerIdx++;
       }
       
       if (headerIdx >= parsed.length) { 
-        alert("Could not find standard eBay headers (e.g., 'Order Number') in this CSV."); 
+        alert("Could not find 'Order Number' header in this CSV."); 
         return; 
       }
       
       const headers = parsed[headerIdx];
-      
-      // Smart fuzzy matching for flexible headers
       const findHeader = (str) => headers.findIndex(h => h && h.toLowerCase().includes(str.toLowerCase()));
       
-      const dateIdx = findHeader('Sale Date'); 
+      // Identify all possible columns
+      const dateIdx = findHeader('Transaction creation date') > -1 ? findHeader('Transaction creation date') : findHeader('Sale Date'); 
       const orderIdx = findHeader('Order Number');
+      const typeIdx = findHeader('Type'); 
       const titleIdx = findHeader('Item Title'); 
       const qtyIdx = findHeader('Quantity');
+      const stateIdx = findHeader('Ship To State') > -1 ? findHeader('Ship To State') : findHeader('Buyer State');
+      const taxIdx = headers.findIndex(h => h && (h.toLowerCase().includes('sales tax') || h.toLowerCase().includes('ebay collected tax')));
       
-      // Target requested specific columns
-      const stateIdx = findHeader('Ship To State');
-      const shipHandIdx = findHeader('Shipping And Handling');
-      const taxIdx = headers.findIndex(h => h && (h.toLowerCase().includes('sales tax paid') || h.toLowerCase().includes('ebay collected tax')));
-      
-      // Total Paid is usually our absolute gross (Item + Ship + Tax)
-      let totalPaidIdx = findHeader('Total Paid');
-      if (totalPaidIdx === -1) totalPaidIdx = findHeader('Total Price');
+      let grossIdx = findHeader('Gross transaction amount');
+      if (grossIdx === -1) grossIdx = findHeader('Total Paid');
+      if (grossIdx === -1) grossIdx = findHeader('Total Price');
       const soldForIdx = findHeader('Sold For');
-      
-      const newRows = [];
-      let unchangedCount = 0;
-      let updatedCount = 0;
-      
+      const shipHandIdx = findHeader('Shipping And Handling');
+      const feeIdx = findHeader('Fee');
+      const netIdx = findHeader('Net amount');
+
       const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
+      
+      // FINANCIAL AGGREGATOR MAP
+      const ordersMap = new Map();
 
       for (let i = headerIdx + 1; i < parsed.length; i++) {
         const row = parsed[i];
         if (row.length < headers.length || !row[orderIdx]) continue;
         
         const orderNum = row[orderIdx];
-        const rawDate = row[dateIdx] || '';
-        const dateParts = rawDate.split('-');
-        let formattedDate = rawDate;
-        if (dateParts.length === 3) {
-          formattedDate = `20${dateParts[2]}-${months[dateParts[0]] || '01'}-${dateParts[1].padStart(2, '0')}`;
-        }
-        
-        const cleanNum = (str) => Number((str || '').replace(/[^0-9.-]+/g,""));
-        const qty = qtyIdx > -1 ? (cleanNum(row[qtyIdx]) || 1) : 1;
-        const state = stateIdx > -1 ? (row[stateIdx] || '').toUpperCase().trim() : '';
-        const salesTax = taxIdx > -1 ? cleanNum(row[taxIdx]) : 0;
-        const desc = row[titleIdx] || 'eBay Sale';
+        if (!orderNum || orderNum.trim() === '' || orderNum.startsWith('--')) continue;
 
-        let gross = 0;
-        if (totalPaidIdx > -1) {
-          gross = cleanNum(row[totalPaidIdx]);
-        } else {
-          // Fallback if Total Paid is missing
-          gross = cleanNum(row[soldForIdx]) + (shipHandIdx > -1 ? cleanNum(row[shipHandIdx]) : 0) + salesTax;
+        const type = typeIdx > -1 ? (row[typeIdx] || '').toLowerCase() : 'order';
+        if (type === 'payout' || type === 'transfer') continue; // Ignore bank transfers
+        
+        if (!ordersMap.has(orderNum)) {
+          ordersMap.set(orderNum, {
+            orderNum: orderNum, date: '', desc: '', state: '', qty: 0, gross: 0, salesTax: 0, ebay: 0, ad: 0, shipping: 0
+          });
         }
         
-        // --- SMART SYNC OVERWRITE ENGINE ---
+        const rec = ordersMap.get(orderNum);
+        const cleanNum = (str) => Number((str || '').replace(/[^0-9.-]+/g,""));
+        
+        let rowGross = grossIdx > -1 ? cleanNum(row[grossIdx]) : (soldForIdx > -1 ? cleanNum(row[soldForIdx]) + (shipHandIdx > -1 ? cleanNum(row[shipHandIdx]) : 0) : 0);
+        let rowTax = taxIdx > -1 ? cleanNum(row[taxIdx]) : 0;
+        let rowFee = feeIdx > -1 ? cleanNum(row[feeIdx]) : 0;
+        let rowNet = netIdx > -1 ? cleanNum(row[netIdx]) : 0;
+        let rowQty = qtyIdx > -1 ? cleanNum(row[qtyIdx]) : 0;
+
+        // 1. Populate Core Information
+        if (type.includes('order') || type === 'sale' || !rec.date) {
+          if (row[dateIdx] && !rec.date) {
+            const rawDate = row[dateIdx];
+            const d = new Date(rawDate);
+            if (!isNaN(d.getTime())) {
+               rec.date = d.toLocaleDateString('en-CA'); // strict YYYY-MM-DD
+            } else {
+               const parts = rawDate.split('-');
+               if (parts.length === 3) rec.date = `20${parts[2]}-${months[parts[0]] || '01'}-${parts[1].padStart(2, '0')}`;
+               else rec.date = rawDate;
+            }
+          }
+          if (titleIdx > -1 && row[titleIdx] && (!rec.desc || rec.desc === 'eBay Sale')) rec.desc = row[titleIdx];
+          if (stateIdx > -1 && row[stateIdx] && !rec.state) rec.state = row[stateIdx].toUpperCase().trim();
+          if (rowQty > 0 && (type.includes('order') || type === 'sale')) rec.qty += rowQty;
+        }
+
+        // 2. Aggregate Financial Splits
+        if (type.includes('shipping label')) {
+          rec.shipping += Math.abs(rowNet || rowGross);
+        } else if (type.includes('ad fee') || type.includes('promoted')) {
+          rec.ad += Math.abs(rowNet || rowFee || rowGross);
+        } else if (type.includes('refund')) {
+          rec.gross += rowGross; // rowGross is usually negative on a refund
+          rec.salesTax -= Math.abs(rowTax);
+          if (rowFee > 0) rec.ebay -= rowFee; 
+          else if (rowFee < 0) rec.ebay += Math.abs(rowFee);
+        } else {
+          // Standard Order
+          rec.gross += rowGross;
+          rec.salesTax += Math.abs(rowTax); 
+          rec.ebay += Math.abs(rowFee); // Fees are usually negative in CSV, we log them as positive expenses
+        }
+      }
+
+      const newRows = [];
+      let unchangedCount = 0;
+      let updatedCount = 0;
+
+      // Smart Sync Engine
+      let index = 0;
+      for (const [orderNum, rec] of ordersMap.entries()) {
         const existingRecord = revenues.find(r => r.orderNum === orderNum);
         
         if (existingRecord) {
           let needsUpdate = false;
           let updates = {};
           
-          // Force overwrite specific imported columns to perfectly match eBay
-          if (gross > 0 && Number(existingRecord.gross || 0) !== gross) {
-            updates.gross = gross.toFixed(2);
-            needsUpdate = true;
-          }
-          if (salesTax >= 0 && Number(existingRecord.salesTax || 0) !== salesTax) {
-            updates.salesTax = salesTax.toFixed(2);
-            needsUpdate = true;
-          }
-          if (state && existingRecord.state !== state) {
-            updates.state = state;
-            needsUpdate = true;
-          }
-          if (qty > 0 && Number(existingRecord.qty || 1) !== qty) {
-            updates.qty = qty;
-            needsUpdate = true;
-          }
-          
-          // Update generic descriptions with the actual item title
-          if (!existingRecord.desc || existingRecord.desc === 'eBay Sale') {
-             if(desc && desc !== 'eBay Sale' && existingRecord.desc !== desc) {
-                updates.desc = desc;
-                needsUpdate = true;
-             }
-          }
+          if (rec.gross !== 0 && Number(existingRecord.gross || 0) !== Number(rec.gross.toFixed(2))) { updates.gross = rec.gross.toFixed(2); needsUpdate = true; }
+          if (rec.salesTax !== 0 && Number(existingRecord.salesTax || 0) !== Number(rec.salesTax.toFixed(2))) { updates.salesTax = rec.salesTax.toFixed(2); needsUpdate = true; }
+          if (rec.ebay !== 0 && Number(existingRecord.ebay || 0) !== Number(rec.ebay.toFixed(2))) { updates.ebay = rec.ebay.toFixed(2); needsUpdate = true; }
+          if (rec.ad !== 0 && Number(existingRecord.ad || 0) !== Number(rec.ad.toFixed(2))) { updates.ad = rec.ad.toFixed(2); needsUpdate = true; }
+          if (rec.shipping !== 0 && Number(existingRecord.shipping || 0) !== Number(rec.shipping.toFixed(2))) { updates.shipping = rec.shipping.toFixed(2); needsUpdate = true; }
+          if (rec.state && existingRecord.state !== rec.state) { updates.state = rec.state; needsUpdate = true; }
+          if (rec.qty > 0 && Number(existingRecord.qty || 1) !== rec.qty) { updates.qty = rec.qty; needsUpdate = true; }
+          if (rec.desc && rec.desc !== 'eBay Sale' && existingRecord.desc !== rec.desc) { updates.desc = rec.desc; needsUpdate = true; }
 
           if (needsUpdate) {
-            newRows.push({
-              ...existingRecord,
-              ...updates,
-              isUpdate: true 
-            });
+            newRows.push({ ...existingRecord, ...updates, isUpdate: true });
             updatedCount++;
           } else {
             unchangedCount++;
@@ -1605,22 +1624,22 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         }
 
         newRows.push({ 
-          id: Date.now() + i, 
-          date: formattedDate, 
-          orderNum: orderNum, 
-          desc: desc, 
-          state: state,
-          qty: qty,
-          gross: gross.toFixed(2), 
-          salesTax: salesTax.toFixed(2), 
-          ebay: '', 
-          ad: '', 
-          shipping: '',
+          id: Date.now() + index++, 
+          date: rec.date, 
+          orderNum: rec.orderNum, 
+          desc: rec.desc || 'eBay Sale', 
+          state: rec.state,
+          qty: rec.qty || 1,
+          gross: rec.gross.toFixed(2), 
+          salesTax: rec.salesTax.toFixed(2), 
+          ebay: rec.ebay > 0 ? rec.ebay.toFixed(2) : '', 
+          ad: rec.ad > 0 ? rec.ad.toFixed(2) : '', 
+          shipping: rec.shipping > 0 ? rec.shipping.toFixed(2) : '',
           isUpdate: false
         });
       }
       
-      setImportStats({ total: parsed.length - headerIdx - 1, unchanged: unchangedCount, updated: updatedCount, new: newRows.filter(r => !r.isUpdate).length });
+      setImportStats({ total: ordersMap.size, unchanged: unchangedCount, updated: updatedCount, new: newRows.filter(r => !r.isUpdate).length });
       setImportPreview(newRows);
     };
     reader.readAsText(file);
