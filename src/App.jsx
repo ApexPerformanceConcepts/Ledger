@@ -470,7 +470,7 @@ export default function App() {
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   
-  const TabButton = ({ id, icon: Icon, label }) => (
+  const TabButton = ({ id, icon: Icon, label, badge }) => (
     <button 
       onClick={() => setActiveTab(id)} 
       className={`relative flex items-center space-x-2 px-5 py-2.5 text-sm font-semibold transition-all duration-300 whitespace-nowrap rounded-full z-10 flex-shrink-0 ${activeTab === id ? 'text-zinc-900' : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200/50'}`}
@@ -478,8 +478,25 @@ export default function App() {
       {activeTab === id && <div className="absolute inset-0 bg-white rounded-full shadow-[0_2px_10px_rgba(0,0,0,0.06)] border border-zinc-200/50 -z-10 animate-in zoom-in-95 duration-200"></div>}
       <Icon size={16} strokeWidth={activeTab === id ? 2.5 : 2} className={activeTab === id ? 'text-blue-600' : ''} />
       <span>{label}</span>
+      {badge > 0 && (
+        <span className="ml-1.5 bg-rose-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center shadow-sm animate-in zoom-in">
+          {badge}
+        </span>
+      )}
     </button>
   );
+
+  // Calculate pending orders for the live notification badge
+  const pendingOrderCount = useMemo(() => {
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    const cutoff = fiveDaysAgo.toISOString().split('T')[0];
+    return revenues.filter(r => {
+      if (r.fulfillmentStatus && r.fulfillmentStatus !== 'shipped') return true;
+      if (!r.fulfillmentStatus && r.date >= cutoff && Number(r.qty) > 0) return true;
+      return false;
+    }).length;
+  }, [revenues]);
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-zinc-900 font-sans antialiased print-bg-white selection:bg-zinc-200 relative overflow-hidden">
@@ -507,7 +524,7 @@ export default function App() {
             <div className="flex gap-1 bg-zinc-100/50 p-1.5 rounded-full border border-zinc-200/50 w-max mb-1">
               <TabButton id="dashboard" icon={LayoutDashboard} label="Command Center" />
               <TabButton id="analytics" icon={MapIcon} label="Analytics" />
-              <TabButton id="production" icon={Zap} label="Production" />
+              <TabButton id="production" icon={Zap} label="Production" badge={pendingOrderCount} />
               <TabButton id="revenue" icon={DollarSign} label="Revenue" />
               <TabButton id="warehouse" icon={Package} label="Warehouse" />
               <TabButton id="fleet" icon={Printer} label="Fleet ROI" />
