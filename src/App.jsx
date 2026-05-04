@@ -318,13 +318,35 @@ export default function App() {
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   const TabButton = ({ id, icon: Icon, label, badge }) => (
-    <button onClick={() => setActiveTab(id)} className={`relative flex items-center space-x-2 px-5 py-2.5 text-sm font-semibold transition-all duration-300 whitespace-nowrap rounded-full z-10 flex-shrink-0 ${activeTab === id ? 'text-zinc-900' : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200/50'}`}>
+    <button 
+      onClick={() => setActiveTab(id)} 
+      className={`relative flex items-center space-x-2 px-5 py-2.5 text-sm font-semibold transition-all duration-300 whitespace-nowrap rounded-full z-10 flex-shrink-0 ${activeTab === id ? 'text-zinc-900' : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200/50'}`}
+    >
       {activeTab === id && <div className="absolute inset-0 bg-white rounded-full shadow-[0_2px_10px_rgba(0,0,0,0.06)] border border-zinc-200/50 -z-10 animate-in zoom-in-95 duration-200"></div>}
       <Icon size={16} strokeWidth={activeTab === id ? 2.5 : 2} className={activeTab === id ? 'text-blue-600' : ''} />
       <span>{label}</span>
-      {badge > 0 && <span className="ml-1.5 bg-rose-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center shadow-sm animate-in zoom-in">{badge}</span>}
+      {badge > 0 && (
+        <span className="ml-1.5 bg-rose-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center shadow-sm animate-in zoom-in">
+          {badge}
+        </span>
+      )}
     </button>
   );
+
+  const pendingOrderCount = useMemo(() => {
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    const cutoff = fiveDaysAgo.toISOString().split('T')[0];
+    return revenues.filter(r => {
+      // Do not count orders that are explicitly shipped or dismissed
+      if (r.fulfillmentStatus === 'shipped' || r.fulfillmentStatus === 'dismissed') return false;
+      // Count recent unfulfilled orders
+      if (r.date >= cutoff && Number(r.qty) > 0) return true;
+      // ALWAYS keep an order alive if it has print jobs actively assigned to it
+      if (printJobs.some(j => j.assignedTo === r.id)) return true;
+      return false;
+    }).length;
+  }, [revenues, printJobs]);
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-zinc-900 font-sans antialiased print-bg-white selection:bg-zinc-200 relative overflow-hidden">
@@ -737,6 +759,13 @@ function ProductionBoard({ activeOrders, printJobs, appSettings, handleUpdateSet
     if(showToast) showToast(`Order fulfilled and shipped!`, 'success');
   };
 
+  // Safely dismiss an order from the board without affecting the component buffer
+  const handleDismissOrder = (order) => {
+    handleUpdateRecord('revenues', order.id, { fulfillmentStatus: 'dismissed' });
+    printJobs.filter(j => j.assignedTo === order.id).forEach(j => handleDelete('printJobs', j.id));
+    if(showToast) showToast(`Order dismissed from production queue.`, 'success');
+  };
+
   const queuedJobs = printJobs.filter(j => j.status === 'queued');
   const printingJobs = printJobs.filter(j => j.status === 'printing');
   const readyJobs = printJobs.filter(j => j.status === 'ready');
@@ -745,11 +774,16 @@ function ProductionBoard({ activeOrders, printJobs, appSettings, handleUpdateSet
     const isBase = job.part === 'Base';
     const orderObj = activeOrders.find(o => o.id === job.assignedTo);
     const assignedText = job.assignedTo === 'buffer' ? 'Safety Buffer (Stock)' : (orderObj?.desc || 'Unknown Order');
+    const orderBadge = job.assignedTo !== 'buffer' && orderObj?.orderNum;
+
     return (
       <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-sm group hover:shadow-md transition-all">
-         <div className="flex justify-between items-start mb-3"><span className={`text-[10px] font-bold uppercase px-2 py-1 rounded border ${isBase ? 'bg-zinc-100 text-zinc-700' : 'bg-blue-50 text-blue-700'}`}>{job.part}</span><button onClick={() => handleDelete('printJobs', job.id)} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><X size={14}/></button></div>
+         <div className="flex justify-between items-start mb-3">
+            <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded border ${isBase ? 'bg-zinc-100 text-zinc-700' : 'bg-blue-50 text-blue-700'}`}>{job.part}</span>
+            <button onClick={() => { handleDelete('printJobs', job.id); if(showToast) showToast("Print job deleted."); }} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><X size={14}/></button>
+         </div>
          <div className="font-semibold text-sm text-zinc-900 line-clamp-2">{assignedText}</div>
-         {orderObj?.orderNum && <div className="text-[10px] font-mono text-zinc-500 mt-1">{orderObj.orderNum}</div>}
+         {orderBadge && <div className="text-[10px] font-mono text-zinc-500 mt-1">{orderBadge}</div>}
          <div className="mt-4 pt-3 border-t border-zinc-100 flex gap-2">
             {job.status === 'queued' && <button onClick={() => handleJobAction(job, 'printing')} className="flex-1 bg-zinc-900 text-white text-[11px] py-2 rounded-lg font-bold flex items-center justify-center"><Play size={12} className="mr-1.5"/> Start Print</button>}
             {job.status === 'printing' && <button onClick={() => handleJobAction(job, 'ready')} className="flex-1 bg-blue-100 text-blue-700 text-[11px] py-2 rounded-lg font-bold flex items-center justify-center animate-pulse"><CheckCircle2 size={12} className="mr-1.5"/> Finish</button>}
@@ -794,13 +828,23 @@ function ProductionBoard({ activeOrders, printJobs, appSettings, handleUpdateSet
                  const readyBases = printJobs.filter(j => j.assignedTo === order.id && j.part === 'Base' && j.status === 'ready').length;
                  const readyCovers = printJobs.filter(j => j.assignedTo === order.id && j.part === 'Cover' && j.status === 'ready').length;
                  const missingBases = Math.max(0, reqQty - readyBases); const missingCovers = Math.max(0, reqQty - readyCovers);
+                 
                  return (
                    <tr key={order.id} className="hover:bg-zinc-50/50 transition-colors">
                       <td className="py-4 pr-4"><div className="truncate max-w-[200px] font-medium text-zinc-900">{order.desc}</div><span className="text-[10px] text-zinc-400 font-mono mt-0.5 block">{order.orderNum || 'Manual Log'}</span></td>
                       <td className="py-4 px-4 text-center font-bold text-lg">{reqQty}</td>
                       <td className="py-4 px-4">{readyBases >= reqQty ? <span className="inline-flex items-center text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md text-xs font-bold border border-emerald-200"><CheckCircle2 size={12} className="mr-1"/> Ready</span> : <div className="flex flex-col"><span className="text-zinc-800 text-xs font-semibold">{readyBases} / {reqQty} Assigned</span>{missingBases <= baseBuffer ? <span className="text-[10px] text-blue-600 font-medium">+ {missingBases} available in buffer</span> : <span className="text-[10px] text-red-500 font-medium">Missing {missingBases - baseBuffer} (Queue print)</span>}</div>}</td>
                       <td className="py-4 px-4">{readyCovers >= reqQty ? <span className="inline-flex items-center text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md text-xs font-bold border border-emerald-200"><CheckCircle2 size={12} className="mr-1"/> Ready</span> : <div className="flex flex-col"><span className="text-zinc-800 text-xs font-semibold">{readyCovers} / {reqQty} Assigned</span>{missingCovers <= coverBuffer ? <span className="text-[10px] text-blue-600 font-medium">+ {missingCovers} available in buffer</span> : <span className="text-[10px] text-red-500 font-medium">Missing {missingCovers - coverBuffer} (Queue print)</span>}</div>}</td>
-                      <td className="py-4 pl-4 text-right"><button disabled={missingBases > baseBuffer || missingCovers > coverBuffer} onClick={() => handleShipOrder(order, missingBases, missingCovers)} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-200 disabled:text-zinc-400 text-white text-xs font-bold py-2.5 px-4 rounded-xl flex items-center ml-auto"><PackageOpen size={14} className="mr-1.5" /> Fulfill Order</button></td>
+                      <td className="py-4 pl-4 text-right">
+                         <div className="flex justify-end space-x-2">
+                           <button onClick={() => handleDismissOrder(order)} className="bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-700 text-xs font-bold py-2.5 px-3 rounded-xl transition-all shadow-sm flex items-center justify-center" title="Remove from queue without using stock">
+                              <X size={14} className="sm:mr-1.5" /> <span className="hidden sm:inline">Dismiss</span>
+                           </button>
+                           <button disabled={missingBases > baseBuffer || missingCovers > coverBuffer} onClick={() => handleShipOrder(order, missingBases, missingCovers)} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-200 disabled:text-zinc-400 text-white text-xs font-bold py-2.5 px-4 rounded-xl flex items-center shadow-sm transition-all">
+                              <PackageOpen size={14} className="mr-1.5" /> Fulfill
+                           </button>
+                         </div>
+                      </td>
                    </tr>
                  )
               })}
@@ -810,9 +854,27 @@ function ProductionBoard({ activeOrders, printJobs, appSettings, handleUpdateSet
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-         <div className="bg-zinc-50 rounded-3xl p-5 border border-zinc-200"><h3 className="font-bold text-zinc-900 mb-5 flex items-center"><Inbox size={16} className="mr-2 text-zinc-400"/> Print Queue</h3><div className="space-y-3">{queuedJobs.map(j => <JobCard key={j.id} job={j}/>)}</div></div>
-         <div className="bg-blue-50/50 rounded-3xl p-5 border border-blue-100"><h3 className="font-bold text-blue-900 mb-5 flex items-center"><Settings size={16} className="mr-2 text-blue-500 animate-[spin_4s_linear_infinite]"/> Printers Active</h3><div className="space-y-3">{printingJobs.map(j => <JobCard key={j.id} job={j}/>)}</div></div>
-         <div className="bg-emerald-50/50 rounded-3xl p-5 border border-emerald-100"><h3 className="font-bold text-emerald-900 mb-5 flex items-center"><Package size={16} className="mr-2 text-emerald-500"/> Assigned to Order</h3><div className="space-y-3">{readyJobs.map(j => <JobCard key={j.id} job={j}/>)}</div></div>
+         <div className="bg-zinc-50 rounded-3xl p-5 border border-zinc-200">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="font-bold text-zinc-900 flex items-center"><Inbox size={16} className="mr-2 text-zinc-400"/> Print Queue</h3>
+              {queuedJobs.length > 0 && <button onClick={() => { queuedJobs.forEach(j => handleDelete('printJobs', j.id)); if(showToast) showToast("Queue cleared."); }} className="text-[10px] uppercase font-bold text-zinc-400 hover:text-red-500 bg-zinc-200/50 hover:bg-red-50 px-2 py-1 rounded transition-colors">Clear</button>}
+            </div>
+            <div className="space-y-3">{queuedJobs.map(j => <JobCard key={j.id} job={j}/>)}</div>
+         </div>
+         <div className="bg-blue-50/50 rounded-3xl p-5 border border-blue-100">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="font-bold text-blue-900 flex items-center"><Settings size={16} className="mr-2 text-blue-500 animate-[spin_4s_linear_infinite]"/> Printers Active</h3>
+              {printingJobs.length > 0 && <button onClick={() => { printingJobs.forEach(j => handleDelete('printJobs', j.id)); if(showToast) showToast("Active prints cleared."); }} className="text-[10px] uppercase font-bold text-blue-400 hover:text-red-500 bg-blue-100 hover:bg-red-50 px-2 py-1 rounded transition-colors">Clear</button>}
+            </div>
+            <div className="space-y-3">{printingJobs.map(j => <JobCard key={j.id} job={j}/>)}</div>
+         </div>
+         <div className="bg-emerald-50/50 rounded-3xl p-5 border border-emerald-100">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="font-bold text-emerald-900 flex items-center"><Package size={16} className="mr-2 text-emerald-500"/> Assigned to Order</h3>
+              {readyJobs.length > 0 && <button onClick={() => { readyJobs.forEach(j => handleDelete('printJobs', j.id)); if(showToast) showToast("Completed prints cleared."); }} className="text-[10px] uppercase font-bold text-emerald-500 hover:text-red-500 bg-emerald-100/50 hover:bg-red-50 px-2 py-1 rounded transition-colors">Clear</button>}
+            </div>
+            <div className="space-y-3">{readyJobs.map(j => <JobCard key={j.id} job={j}/>)}</div>
+         </div>
       </div>
     </div>
   );
