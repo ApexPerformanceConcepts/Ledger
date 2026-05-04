@@ -71,14 +71,32 @@ const MagneticButton = ({ children, onClick, className }) => {
 
 const DashboardSkeleton = () => (
   <div className="space-y-8 animate-pulse">
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div className="h-8 w-48 bg-zinc-200/80 rounded-lg"></div><div className="flex space-x-3"><div className="h-10 w-28 bg-zinc-200/80 rounded-full"></div><div className="h-10 w-28 bg-zinc-200/80 rounded-full"></div></div></div>
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{[...Array(6)].map((_, i) => (<div key={i} className="h-40 bg-zinc-200/60 rounded-3xl"></div>))}</div>
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="h-8 w-48 bg-zinc-200/80 rounded-lg"></div>
+      <div className="flex space-x-3">
+        <div className="h-10 w-28 bg-zinc-200/80 rounded-full"></div>
+        <div className="h-10 w-28 bg-zinc-200/80 rounded-full"></div>
+      </div>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {[...Array(6)].map((_, i) => (<div key={i} className="h-40 bg-zinc-200/60 rounded-3xl"></div>))}
+    </div>
     <div className="h-48 bg-zinc-200/60 rounded-3xl w-full"></div>
   </div>
 );
 
 const EmptyState = ({ icon: Icon, title, message, colSpan }) => (
-  <tr><td colSpan={colSpan || 12} className="p-0"><div className="flex flex-col items-center justify-center py-20 px-4 text-center bg-zinc-50/50 rounded-3xl border border-dashed border-zinc-200/80 m-4 animate-in fade-in zoom-in-95 duration-500"><div className="bg-white p-5 rounded-full shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] border border-zinc-100 mb-5 text-zinc-300"><Icon size={32} strokeWidth={1.5} /></div><h3 className="text-sm font-bold text-zinc-800 tracking-tight mb-2">{title}</h3><p className="text-xs font-medium text-zinc-500 max-w-[260px] mx-auto leading-relaxed">{message}</p></div></td></tr>
+  <tr>
+    <td colSpan={colSpan || 12} className="p-0">
+      <div className="flex flex-col items-center justify-center py-20 px-4 text-center bg-zinc-50/50 rounded-3xl border border-dashed border-zinc-200/80 m-4 animate-in fade-in zoom-in-95 duration-500">
+        <div className="bg-white p-5 rounded-full shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] border border-zinc-100 mb-5 text-zinc-300">
+          <Icon size={32} strokeWidth={1.5} />
+        </div>
+        <h3 className="text-sm font-bold text-zinc-800 tracking-tight mb-2">{title}</h3>
+        <p className="text-xs font-medium text-zinc-500 max-w-[260px] mx-auto leading-relaxed">{message}</p>
+      </div>
+    </td>
+  </tr>
 );
 
 const exportToCsv = (filename, rows) => {
@@ -201,15 +219,18 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    const unsubRevs = onSnapshot(getColRef('revenues'), (snap) => setRevenues(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubExps = onSnapshot(getColRef('expenses'), (snap) => setExpenses(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubEqs = onSnapshot(getColRef('equities'), (snap) => setEquities(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubMiles = onSnapshot(getColRef('mileages'), (snap) => setMileages(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubRestocks = onSnapshot(getColRef('restocks'), (snap) => setRestocks(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubMachines = onSnapshot(getColRef('machines'), (snap) => setMachines(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubPrintJobs = onSnapshot(getColRef('printJobs'), (snap) => setPrintJobs(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubCogs = onSnapshot(getDocRef('settings', 'cogs'), (docSnap) => { if (docSnap.exists()) setCogs(prev => ({ ...prev, ...docSnap.data() })); });
-    const unsubSettings = onSnapshot(getDocRef('settings', 'app'), (docSnap) => { if (docSnap.exists()) setAppSettings(prev => ({ ...prev, ...docSnap.data() })); });
+    const basePath = ['artifacts', appId, 'public', 'data'];
+    
+    const unsubRevs = onSnapshot(collection(db, ...basePath, 'revenues'), (snap) => setRevenues(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubExps = onSnapshot(collection(db, ...basePath, 'expenses'), (snap) => setExpenses(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubEqs = onSnapshot(collection(db, ...basePath, 'equities'), (snap) => setEquities(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubMiles = onSnapshot(collection(db, ...basePath, 'mileages'), (snap) => setMileages(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubRestocks = onSnapshot(collection(db, ...basePath, 'restocks'), (snap) => setRestocks(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubMachines = onSnapshot(collection(db, ...basePath, 'machines'), (snap) => setMachines(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubPrintJobs = onSnapshot(collection(db, ...basePath, 'printJobs'), (snap) => setPrintJobs(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubCogs = onSnapshot(doc(db, ...basePath, 'settings', 'cogs'), (docSnap) => { if (docSnap.exists()) setCogs(prev => ({ ...prev, ...docSnap.data() })); });
+    const unsubSettings = onSnapshot(doc(db, ...basePath, 'settings', 'app'), (docSnap) => { if (docSnap.exists()) setAppSettings(prev => ({ ...prev, ...docSnap.data() })); });
+    
     return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubRestocks(); unsubMachines(); unsubPrintJobs(); unsubCogs(); unsubSettings(); };
   }, [user]);
 
@@ -254,16 +275,10 @@ export default function App() {
   const availableGolfFund = isGolfUnlocked ? Math.max(0, safeCash - initialGoal - drawsGolf - drawsOther) : 0;
 
   const activeOrders = useMemo(() => {
-    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 5); 
-    const cutoffStr = cutoff.toISOString().split('T')[0];
-    return revenues.filter(r => {
-      if (r.fulfillmentStatus === 'shipped' || r.fulfillmentStatus === 'dismissed') return false;
-      if (printJobs.some(j => j.assignedTo === r.id)) return true;
-      if (!r.fulfillmentStatus && r.date >= cutoffStr && Number(r.qty) > 0) return true;
-      if (r.fulfillmentStatus) return true;
-      return false;
-    }).sort((a, b) => new Date(a.date) - new Date(b.date)); 
-  }, [revenues, printJobs]);
+    // Only pull orders into the Production board if they have been explicitly queued
+    return revenues.filter(r => r.fulfillmentStatus === 'production')
+                   .sort((a, b) => new Date(a.date) - new Date(b.date)); 
+  }, [revenues]);
 
   const shippedOrdersUnits = useMemo(() => {
     const activeIds = new Set(activeOrders.map(o => o.id));
@@ -327,6 +342,7 @@ export default function App() {
   }, [machines, lifetimeHoursPerMachine]);
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+  
   const TabButton = ({ id, icon: Icon, label, badge }) => (
     <button onClick={() => setActiveTab(id)} className={`relative flex items-center space-x-2 px-5 py-2.5 text-sm font-semibold transition-all duration-300 whitespace-nowrap rounded-full z-10 flex-shrink-0 ${activeTab === id ? 'text-zinc-900' : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200/50'}`}>
       {activeTab === id && <div className="absolute inset-0 bg-white rounded-full shadow-[0_2px_10px_rgba(0,0,0,0.06)] border border-zinc-200/50 -z-10 animate-in zoom-in-95 duration-200"></div>}
@@ -335,6 +351,10 @@ export default function App() {
       {badge > 0 && <span className="ml-1.5 bg-rose-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center shadow-sm animate-in zoom-in">{badge}</span>}
     </button>
   );
+
+  const pendingOrderCount = useMemo(() => {
+    return revenues.filter(r => r.fulfillmentStatus === 'production').length;
+  }, [revenues]);
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-zinc-900 font-sans antialiased print-bg-white selection:bg-zinc-200 relative overflow-hidden">
@@ -361,7 +381,7 @@ export default function App() {
             <div className="flex gap-1 bg-zinc-100/50 p-1.5 rounded-full border border-zinc-200/50 w-max mb-1">
               <TabButton id="dashboard" icon={LayoutDashboard} label="Command Center" />
               <TabButton id="analytics" icon={MapIcon} label="Analytics" />
-              <TabButton id="production" icon={Zap} label="Production" badge={activeOrders.length} />
+              <TabButton id="production" icon={Zap} label="Production" badge={pendingOrderCount} />
               <TabButton id="revenue" icon={DollarSign} label="Revenue" />
               <TabButton id="warehouse" icon={Package} label="Warehouse" />
               <TabButton id="fleet" icon={Printer} label="Fleet ROI" />
@@ -381,10 +401,28 @@ export default function App() {
             {activeTab === 'dashboard' && (
               <div className="space-y-8 animate-in fade-in duration-500 slide-in-from-bottom-4">
                 {lowStockAlerts.length > 0 && (
-                  <div className="bg-white/80 backdrop-blur-md border border-amber-200/60 p-5 rounded-3xl flex items-start"><div className="bg-amber-100 p-2 rounded-full mr-4"><AlertTriangle className="text-amber-600" size={20} /></div><div><h3 className="text-amber-900 font-bold text-sm">SUPPLY CHAIN ALERT</h3><p className="text-amber-700/80 text-sm mt-1">Based on recent sales velocity ({dailySalesVelocity.toFixed(1)} units/day), you will run out of:</p><ul className="text-amber-800 text-sm mt-2 flex gap-2">{lowStockAlerts.map((a, i) => <li key={i} className="bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100/50">{a.name} in {a.days}d</li>)}</ul></div></div>
+                  <div className="bg-white/80 backdrop-blur-md border border-amber-200/60 p-5 rounded-3xl flex items-start">
+                    <div className="bg-amber-100 p-2 rounded-full mr-4"><AlertTriangle className="text-amber-600" size={20} /></div>
+                    <div>
+                      <h3 className="text-amber-900 font-bold text-sm">SUPPLY CHAIN ALERT</h3>
+                      <p className="text-amber-700/80 text-sm mt-1">Based on recent sales velocity ({dailySalesVelocity.toFixed(1)} units/day), you will run out of:</p>
+                      <ul className="text-amber-800 text-sm mt-2 flex gap-2">
+                        {lowStockAlerts.map((a, i) => <li key={i} className="bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100/50">{a.name} in {a.days}d</li>)}
+                      </ul>
+                    </div>
+                  </div>
                 )}
                 {maintenanceAlerts.length > 0 && (
-                  <div className="bg-white/80 backdrop-blur-md border border-rose-200/60 p-5 rounded-3xl flex items-start mt-4"><div className="bg-rose-100 p-2 rounded-full mr-4"><Settings className="text-rose-600 animate-[spin_4s_linear_infinite]" size={20} /></div><div><h3 className="text-rose-900 font-bold text-sm">FLEET MAINTENANCE REQUIRED</h3><ul className="text-rose-800 text-sm mt-2 flex gap-2">{maintenanceAlerts.map((a, i) => <li key={i} className="bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100/50">{a.name} ({a.hoursOver}h over)</li>)}</ul></div></div>
+                  <div className="bg-white/80 backdrop-blur-md border border-rose-200/60 p-5 rounded-3xl flex items-start mt-4">
+                    <div className="bg-rose-100 p-2 rounded-full mr-4"><Settings className="text-rose-600 animate-[spin_4s_linear_infinite]" size={20} /></div>
+                    <div>
+                      <h3 className="text-rose-900 font-bold text-sm">FLEET MAINTENANCE REQUIRED</h3>
+                      <p className="text-rose-700/80 text-sm mt-1 font-medium">The following hardware has exceeded the 300-hour print threshold and requires carbon rod cleaning & Z-axis greasing:</p>
+                      <ul className="text-rose-800 text-sm mt-2 flex flex-wrap gap-2 font-medium">
+                        {maintenanceAlerts.map((a, i) => <li key={i} className="bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100/50">{a.name} ({a.hoursOver}h over)</li>)}
+                      </ul>
+                    </div>
+                  </div>
                 )}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <h2 className="text-2xl font-bold tracking-tight text-zinc-900">Overview</h2>
@@ -458,7 +496,8 @@ function DashboardCard({ title, amount, subtitle, color, isNegative, highlight, 
     <div className={`bg-white/80 backdrop-blur-md rounded-3xl p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${highlight ? 'ring-1 ring-zinc-200/60' : 'border border-zinc-100'}`}>
       <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{title}</h3>
       <div className={`text-3xl sm:text-4xl font-bold tracking-tighter mt-3 ${colorMap[color] || 'text-zinc-900'}`}>
-        {isNegative && amount > 0 ? '-' : ''}<AnimatedNumber value={amount} formatCurrency={formatCurrency} />
+        {isNegative && amount > 0 ? '-' : ''}
+        <AnimatedNumber value={amount} formatCurrency={formatCurrency} />
       </div>
       <p className="text-sm font-medium text-zinc-400 mt-2">{subtitle}</p>
     </div>
@@ -472,17 +511,27 @@ function ProgressCard({ drawsRecoup, initialGoal, remainingToRecoup, formatCurre
   const percentComplete = initialGoal > 0 ? Math.min(100, (drawsRecoup / initialGoal) * 100) : 100;
   return (
     <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center relative group hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all">
-      <div className="absolute top-6 right-6">{!isEditing && <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-zinc-900 transition-colors p-1 opacity-0 group-hover:opacity-100" title="Edit Initial Goal"><Edit2 size={16} /></button>}</div>
+      <div className="absolute top-6 right-6">
+        {!isEditing && <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-zinc-900 transition-colors p-1 opacity-0 group-hover:opacity-100" title="Edit Initial Goal"><Edit2 size={16} /></button>}
+      </div>
       <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Remaining to Recoup</h3>
-      <div className="text-3xl sm:text-4xl font-bold tracking-tighter text-zinc-900 mb-2"><AnimatedNumber value={remainingToRecoup} formatCurrency={formatCurrency} /></div>
-      <div className="w-full bg-zinc-100 rounded-full h-1.5 mt-5 overflow-hidden"><div className="bg-zinc-900 h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${percentComplete}%` }}></div></div>
+      <div className="text-3xl sm:text-4xl font-bold tracking-tighter text-zinc-900 mb-2">
+        <AnimatedNumber value={remainingToRecoup} formatCurrency={formatCurrency} />
+      </div>
+      <div className="w-full bg-zinc-100 rounded-full h-1.5 mt-5 overflow-hidden">
+        <div className="bg-zinc-900 h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${percentComplete}%` }}></div>
+      </div>
       {isEditing ? (
         <div className="flex items-center space-x-3 mt-5 bg-zinc-50 p-2 rounded-xl border border-zinc-200">
           <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest ml-2">Goal $</span>
           <input type="number" className="border-none bg-transparent w-24 text-sm font-semibold outline-none text-zinc-900" value={tempGoal} onChange={(e) => setTempGoal(e.target.value)} />
           <button onClick={handleSave} className="bg-zinc-900 text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"><Check size={14} /></button>
         </div>
-      ) : <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-400 mt-4">{percentComplete.toFixed(0)}% to {formatCurrency(initialGoal)} goal</p>}
+      ) : (
+        <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-400 mt-4">
+          {percentComplete.toFixed(0)}% to {formatCurrency(initialGoal)} goal
+        </p>
+      )}
     </div>
   );
 }
@@ -495,17 +544,62 @@ function QuickRevenueModal({ onClose, onAdd }) {
     <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
         <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-white/50 backdrop-blur-md">
-          <h2 className="text-lg font-bold tracking-tight text-zinc-900 flex items-center">Log New Sale</h2><button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200 p-2.5 rounded-full"><X size={18}/></button>
+          <h2 className="text-lg font-bold tracking-tight text-zinc-900 flex items-center">Log New Sale</h2>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200 p-2.5 rounded-full"><X size={18}/></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
-          <div className="grid grid-cols-2 gap-4"><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">State (e.g. AZ)</label><input type="text" maxLength="2" className={modalInputStyle} placeholder="Optional" value={formData.state} onChange={e=>setFormData({...formData, state:e.target.value.toUpperCase()})}/></div></div>
-          <div className="grid grid-cols-4 gap-4"><div className="col-span-3"><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div><div className="col-span-1"><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Qty</label><input type="number" min="1" className={modalInputStyle} value={formData.qty} onChange={e=>setFormData({...formData, qty:e.target.value})} required/></div></div>
-          <div className="grid grid-cols-2 gap-4"><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Total Paid (Gross $)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.gross} onChange={e=>setFormData({...formData, gross:e.target.value})} required/></div><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Sales Tax ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.salesTax} onChange={e=>setFormData({...formData, salesTax:e.target.value})}/></div></div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label>
+              <input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">State (e.g. AZ)</label>
+              <input type="text" maxLength="2" className={modalInputStyle} placeholder="Optional" value={formData.state} onChange={e=>setFormData({...formData, state:e.target.value.toUpperCase()})}/>
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-4">
+            <div className="col-span-3">
+              <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label>
+              <input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/>
+            </div>
+            <div className="col-span-1">
+              <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Qty</label>
+              <input type="number" min="1" className={modalInputStyle} value={formData.qty} onChange={e=>setFormData({...formData, qty:e.target.value})} required/>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Total Paid (Gross $)</label>
+              <input type="number" step="0.01" className={modalInputStyle} value={formData.gross} onChange={e=>setFormData({...formData, gross:e.target.value})} required/>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Sales Tax ($)</label>
+              <input type="number" step="0.01" className={modalInputStyle} value={formData.salesTax} onChange={e=>setFormData({...formData, salesTax:e.target.value})}/>
+            </div>
+          </div>
+          
           {!showFees ? (
-            <button type="button" onClick={() => setShowFees(true)} className="w-full py-3.5 border border-dashed border-zinc-200 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-zinc-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 flex justify-center items-center"><Plus size={14} className="mr-1.5" /> Add Fees & Shipping</button>
+            <button type="button" onClick={() => setShowFees(true)} className="w-full py-3.5 border border-dashed border-zinc-200 rounded-2xl text-[11px] font-bold uppercase tracking-widest text-zinc-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 flex justify-center items-center">
+              <Plus size={14} className="mr-1.5" /> Add Fees & Shipping
+            </button>
           ) : (
-            <div className="grid grid-cols-3 gap-3 p-5 bg-zinc-50 rounded-2xl border border-zinc-100/80 animate-in fade-in zoom-in-95"><div><label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">eBay Fee</label><input type="number" step="0.01" className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:border-zinc-900" value={formData.ebay} onChange={e=>setFormData({...formData, ebay:e.target.value})}/></div><div><label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Ad Fee</label><input type="number" step="0.01" className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:border-zinc-900" value={formData.ad} onChange={e=>setFormData({...formData, ad:e.target.value})}/></div><div><label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Label Cost</label><input type="number" step="0.01" className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:border-zinc-900" value={formData.shipping} onChange={e=>setFormData({...formData, shipping:e.target.value})}/></div></div>
+            <div className="grid grid-cols-3 gap-3 p-5 bg-zinc-50 rounded-2xl border border-zinc-100/80 animate-in fade-in zoom-in-95">
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">eBay Fee</label>
+                <input type="number" step="0.01" className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:border-zinc-900" value={formData.ebay} onChange={e=>setFormData({...formData, ebay:e.target.value})}/>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Ad Fee</label>
+                <input type="number" step="0.01" className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:border-zinc-900" value={formData.ad} onChange={e=>setFormData({...formData, ad:e.target.value})}/>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Label Cost</label>
+                <input type="number" step="0.01" className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:border-zinc-900" value={formData.shipping} onChange={e=>setFormData({...formData, shipping:e.target.value})}/>
+              </div>
+            </div>
           )}
+
           <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 shadow-sm hover:-translate-y-0.5 transition-all">Save Record</button>
         </form>
       </div>
@@ -513,26 +607,57 @@ function QuickRevenueModal({ onClose, onAdd }) {
   );
 }
 
-function QuickExpenseModal({ onClose, onAdd, uploadReceipt }) {
+function QuickExpenseModal({ onClose, onAdd, uploadReceipt, showToast }) {
   const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Supplies', amount: '' });
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const categories = ['Supplies', 'Advertising', 'Travel', 'Equipment', 'Office'];
+  
   const handleSubmit = async (e) => { 
-    e.preventDefault(); if(!formData.amount) return; setIsUploading(true);
-    let receiptUrl = ''; if (file) receiptUrl = await uploadReceipt(file) || '';
-    onAdd({ ...formData, receiptUrl }); setIsUploading(false);
+    e.preventDefault(); 
+    if(!formData.amount) return; 
+    setIsUploading(true);
+    let receiptUrl = ''; 
+    if (file) receiptUrl = await uploadReceipt(file) || '';
+    onAdd({ ...formData, receiptUrl }); 
+    setIsUploading(false);
   };
+
   return (
     <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center"><h2 className="text-lg font-bold tracking-tight text-zinc-900">Log Expense</h2><button onClick={onClose} disabled={isUploading} className="text-zinc-400 hover:text-zinc-900 bg-zinc-100 p-2.5 rounded-full"><X size={18}/></button></div>
+        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+          <h2 className="text-lg font-bold tracking-tight text-zinc-900">Log Expense</h2>
+          <button onClick={onClose} disabled={isUploading} className="text-zinc-400 hover:text-zinc-900 bg-zinc-100 p-2.5 rounded-full"><X size={18}/></button>
+        </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
-          <div className="grid grid-cols-2 gap-4"><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div></div>
-          <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl"><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Attach Receipt</label><input type="file" accept="image/*,application/pdf" onChange={e=>setFile(e.target.files[0])} className="w-full text-sm font-medium text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:uppercase file:tracking-wider file:bg-zinc-200 file:text-zinc-700 hover:file:bg-zinc-300 cursor-pointer" /></div>
-          <button type="submit" disabled={isUploading} className="w-full bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-400 text-white font-semibold py-3.5 px-4 rounded-2xl flex justify-center items-center shadow-sm hover:-translate-y-0.5">{isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Receipt...</> : "Save Expense"}</button>
+          <div>
+            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label>
+            <input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label>
+            <input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Category</label>
+              <select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>
+                {categories.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label>
+              <input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/>
+            </div>
+          </div>
+          <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl">
+            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Attach Receipt</label>
+            <input type="file" accept="image/*,application/pdf" onChange={e=>setFile(e.target.files[0])} className="w-full text-sm font-medium text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:uppercase file:tracking-wider file:bg-zinc-200 file:text-zinc-700 hover:file:bg-zinc-300 cursor-pointer" />
+          </div>
+          <button type="submit" disabled={isUploading} className="w-full bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-400 text-white font-semibold py-3.5 px-4 rounded-2xl flex justify-center items-center shadow-sm hover:-translate-y-0.5">
+            {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Receipt...</> : "Save Expense"}
+          </button>
         </form>
       </div>
     </div>
@@ -541,16 +666,38 @@ function QuickExpenseModal({ onClose, onAdd, uploadReceipt }) {
 
 function QuickEquityModal({ onClose, onAdd }) {
   const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Amex Transfer (Op Cash)', amount: '' });
-  const handleSubmit = (e) => { e.preventDefault(); if(formData.amount) onAdd(formData); };
+  
+  const handleSubmit = (e) => { 
+    e.preventDefault(); 
+    if(formData.amount) onAdd(formData); 
+  };
+
   return (
     <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center"><h2 className="text-lg font-bold tracking-tight text-zinc-900">Transfer Funds</h2><button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 bg-zinc-100 p-2.5 rounded-full"><X size={18}/></button></div>
+        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
+          <h2 className="text-lg font-bold tracking-tight text-zinc-900">Transfer Funds</h2>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 bg-zinc-100 p-2.5 rounded-full"><X size={18}/></button>
+        </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{['Recoup Investment', 'Golf Fund', 'Amex Transfer (Op Cash)', 'Other Draw'].map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
+          <div>
+            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label>
+            <input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label>
+            <input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Category</label>
+            <select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>
+              {['Recoup Investment', 'Golf Fund', 'Amex Transfer (Op Cash)', 'Other Draw'].map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label>
+            <input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/>
+          </div>
           <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3.5 px-4 rounded-2xl shadow-sm hover:-translate-y-0.5">Log Transfer</button>
         </form>
       </div>
@@ -560,62 +707,127 @@ function QuickEquityModal({ onClose, onAdd }) {
 
 function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalUnitsSold }) {
   const [demandTimeframe, setDemandTimeframe] = useState('lifetime');
+
   const monthlyData = useMemo(() => {
     const dataMap = {};
-    revenues.forEach(r => { if (!r.date) return; const month = r.date.substring(0, 7); if (!dataMap[month]) dataMap[month] = { month, rev: 0, exp: 0 }; dataMap[month].rev += Number(r.gross || 0); });
-    expenses.forEach(e => { if (!e.date) return; const month = e.date.substring(0, 7); if (!dataMap[month]) dataMap[month] = { month, rev: 0, exp: 0 }; dataMap[month].exp += Number(e.amount || 0); });
+    revenues.forEach(r => { 
+      if (!r.date) return; 
+      const month = r.date.substring(0, 7); 
+      if (!dataMap[month]) dataMap[month] = { month, rev: 0, exp: 0 }; 
+      dataMap[month].rev += Number(r.gross || 0); 
+    });
+    expenses.forEach(e => { 
+      if (!e.date) return; 
+      const month = e.date.substring(0, 7); 
+      if (!dataMap[month]) dataMap[month] = { month, rev: 0, exp: 0 }; 
+      dataMap[month].exp += Number(e.amount || 0); 
+    });
     return Object.values(dataMap).sort((a, b) => a.month.localeCompare(b.month));
   }, [revenues, expenses]);
+
   const maxBarValue = Math.max(10, ...monthlyData.map(d => Math.max(d.rev, d.exp)));
+
   const { stateData, maxStateRevenue } = useMemo(() => {
     const stateRevenues = {}; let maxRev = 0;
-    revenues.forEach(r => { if (r.state && r.state.length === 2) { const gross = Number(r.gross || 0); stateRevenues[r.state] = (stateRevenues[r.state] || 0) + gross; if (stateRevenues[r.state] > maxRev) maxRev = stateRevenues[r.state]; } });
+    revenues.forEach(r => { 
+      if (r.state && r.state.length === 2) { 
+        const gross = Number(r.gross || 0); 
+        stateRevenues[r.state] = (stateRevenues[r.state] || 0) + gross; 
+        if (stateRevenues[r.state] > maxRev) maxRev = stateRevenues[r.state]; 
+      } 
+    });
     return { stateData: stateRevenues, maxStateRevenue: maxRev };
   }, [revenues]);
-  const topStates = useMemo(() => Object.keys(stateData).map(code => ({ code, rev: stateData[code] })).sort((a, b) => b.rev - a.rev).slice(0, 5), [stateData]);
-  const grid = useMemo(() => { const arr = Array(7).fill(null).map(() => Array(12).fill(null)); tileMapData.forEach(t => arr[t.r][t.c] = t.code); return arr; }, []);
+
+  const topStates = useMemo(() => {
+    return Object.keys(stateData).map(code => ({ code, rev: stateData[code] })).sort((a, b) => b.rev - a.rev).slice(0, 5);
+  }, [stateData]);
+
+  const grid = useMemo(() => { 
+    const arr = Array(7).fill(null).map(() => Array(12).fill(null)); 
+    tileMapData.forEach(t => arr[t.r][t.c] = t.code); 
+    return arr; 
+  }, []);
 
   const { dayOfWeekData, maxDayUnits, bestDay } = useMemo(() => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const counts = [0, 0, 0, 0, 0, 0, 0]; const revs = [0, 0, 0, 0, 0, 0, 0];
+    const counts = [0, 0, 0, 0, 0, 0, 0]; 
+    const revs = [0, 0, 0, 0, 0, 0, 0];
+    
     let filteredRevenues = revenues;
     if (demandTimeframe !== 'lifetime') {
       const cutoffDate = new Date(new Date().setDate(new Date().getDate() - (demandTimeframe === '30' ? 30 : 14))).toISOString().split('T')[0];
       filteredRevenues = revenues.filter(r => r.date >= cutoffDate);
     }
-    filteredRevenues.forEach(r => { if (!r.date) return; const [y, m, d] = r.date.split('-'); const dayIdx = new Date(y, m - 1, d).getDay(); counts[dayIdx] += Number(r.qty || 1); revs[dayIdx] += Number(r.gross || 0); });
+    
+    filteredRevenues.forEach(r => { 
+      if (!r.date) return; 
+      const [y, m, d] = r.date.split('-'); 
+      const dayIdx = new Date(y, m - 1, d).getDay(); 
+      counts[dayIdx] += Number(r.qty || 1); 
+      revs[dayIdx] += Number(r.gross || 0); 
+    });
+    
     const parsedData = days.map((day, idx) => ({ day, short: day.substring(0, 3), units: counts[idx], rev: revs[idx], isWeekend: idx === 0 || idx === 6 }));
     const maxUnits = Math.max(1, ...parsedData.map(d => d.units));
-    return { dayOfWeekData: parsedData, maxDayUnits: maxUnits, bestDay: parsedData.reduce((max, d) => d.units > max.units ? d : max, parsedData[0]) };
+    
+    return { 
+      dayOfWeekData: parsedData, 
+      maxDayUnits: maxUnits, 
+      bestDay: parsedData.reduce((max, d) => d.units > max.units ? d : max, parsedData[0]) 
+    };
   }, [revenues, demandTimeframe]);
 
   const forecastData = useMemo(() => {
-    const now = new Date(); const thirtyDaysAgo = new Date(new Date().setDate(now.getDate() - 30)).toISOString().split('T')[0]; const sixtyDaysAgo = new Date(new Date().setDate(now.getDate() - 60)).toISOString().split('T')[0];
-    const last30Revs = revenues.filter(r => r.date >= thirtyDaysAgo); const prev30Revs = revenues.filter(r => r.date >= sixtyDaysAgo && r.date < thirtyDaysAgo);
-    const current30Rev = last30Revs.reduce((sum, r) => sum + Number(r.gross || 0), 0); const current30Units = last30Revs.reduce((sum, r) => sum + Number(r.qty || 1), 0); const prev30Rev = prev30Revs.reduce((sum, r) => sum + Number(r.gross || 0), 0);
-    return { current30Rev, prev30Rev, projectedNext30Rev: (current30Rev / 30) * 30, projectedNext30Units: Math.round((current30Units / 30) * 30), momGrowth: prev30Rev === 0 ? (current30Rev > 0 ? 100 : 0) : ((current30Rev - prev30Rev) / prev30Rev) * 100 };
+    const now = new Date(); 
+    const thirtyDaysAgo = new Date(new Date().setDate(now.getDate() - 30)).toISOString().split('T')[0]; 
+    const sixtyDaysAgo = new Date(new Date().setDate(now.getDate() - 60)).toISOString().split('T')[0];
+    
+    const last30Revs = revenues.filter(r => r.date >= thirtyDaysAgo); 
+    const prev30Revs = revenues.filter(r => r.date >= sixtyDaysAgo && r.date < thirtyDaysAgo);
+    
+    const current30Rev = last30Revs.reduce((sum, r) => sum + Number(r.gross || 0), 0); 
+    const current30Units = last30Revs.reduce((sum, r) => sum + Number(r.qty || 1), 0); 
+    const prev30Rev = prev30Revs.reduce((sum, r) => sum + Number(r.gross || 0), 0);
+    
+    return { 
+      current30Rev, 
+      prev30Rev, 
+      projectedNext30Rev: (current30Rev / 30) * 30, 
+      projectedNext30Units: Math.round((current30Units / 30) * 30), 
+      momGrowth: prev30Rev === 0 ? (current30Rev > 0 ? 100 : 0) : ((current30Rev - prev30Rev) / prev30Rev) * 100 
+    };
   }, [revenues]);
 
   const cacData = useMemo(() => {
     const totalAdSpend = expenses.filter(e => e.category === 'Advertising').reduce((sum, e) => sum + Number(e.amount || 0), 0) + revenues.reduce((sum, r) => sum + Number(r.ad || 0), 0);
-    const cac = totalUnitsSold > 0 ? totalAdSpend / totalUnitsSold : 0; const avgProfit = totalUnitsSold > 0 ? totalTrueProfit / totalUnitsSold : 0; const ratio = cac > 0 ? avgProfit / cac : 0;
+    const cac = totalUnitsSold > 0 ? totalAdSpend / totalUnitsSold : 0; 
+    const avgProfit = totalUnitsSold > 0 ? totalTrueProfit / totalUnitsSold : 0; 
+    const ratio = cac > 0 ? avgProfit / cac : 0;
     return { cac, avgProfit, ratio, totalAdSpend, isHealthy: cac < avgProfit && ratio > 2 };
   }, [revenues, expenses, totalUnitsSold, totalTrueProfit]);
 
   return (
     <div className="space-y-8 animate-in fade-in">
       <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-shadow">
-        <div className="flex items-center justify-between mb-8"><h3 className="font-bold text-zinc-900 text-lg flex items-center">Customer Geospatial Tile Map</h3><div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest bg-zinc-50 border border-zinc-100 px-3 py-1.5 rounded-full">Hover to inspect</div></div>
+        <div className="flex items-center justify-between mb-8">
+          <h3 className="font-bold text-zinc-900 text-lg flex items-center">Customer Geospatial Tile Map</h3>
+          <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest bg-zinc-50 border border-zinc-100 px-3 py-1.5 rounded-full">Hover to inspect</div>
+        </div>
         <div className="flex flex-col lg:flex-row gap-10">
           <div className="flex-1 bg-[#fbfbfd] rounded-2xl p-6 border border-zinc-100 flex items-center justify-center">
             <div className="grid gap-1 sm:gap-2 w-full max-w-2xl" style={{ gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' }}>
               {grid.flat().map((cell, i) => {
                 if (!cell) return <div key={i} className="aspect-square" />;
-                const rev = stateData[cell] || 0; const intensity = maxStateRevenue > 0 ? rev / maxStateRevenue : 0;
+                const rev = stateData[cell] || 0; 
+                const intensity = maxStateRevenue > 0 ? rev / maxStateRevenue : 0;
                 return (
                   <div key={i} className={`aspect-square border ${rev > 0 ? 'border-transparent' : 'border-zinc-200'} rounded-md flex items-center justify-center text-[10px] sm:text-[11px] font-bold cursor-pointer hover:ring-2 hover:ring-blue-500 hover:scale-[1.15] hover:z-10 transition-all shadow-sm relative group`} style={{ backgroundColor: rev > 0 ? `rgba(9, 9, 11, ${Math.max(0.08, intensity)})` : '#ffffff', color: intensity > 0.4 ? '#ffffff' : '#71717a' }}>
                     {cell}
-                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-zinc-900/95 backdrop-blur-sm text-white px-4 py-2.5 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 z-50 pointer-events-none"><div className="font-bold text-[11px] text-zinc-400 mb-0.5">{cell}</div><div className="text-white font-semibold">{formatCurrency(rev)}</div></div>
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-zinc-900/95 backdrop-blur-sm text-white px-4 py-2.5 rounded-xl shadow-xl opacity-0 group-hover:opacity-100 z-50 pointer-events-none">
+                      <div className="font-bold text-[11px] text-zinc-400 mb-0.5">{cell}</div>
+                      <div className="text-white font-semibold">{formatCurrency(rev)}</div>
+                    </div>
                   </div>
                 )
               })}
@@ -623,7 +835,15 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
           </div>
           <div className="w-full lg:w-64 flex flex-col space-y-4">
             <h4 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-100 pb-3">Top Markets</h4>
-            {topStates.map((state, idx) => (<div key={state.code} className="flex items-center justify-between group"><div className="flex items-center space-x-3"><span className="text-zinc-300 font-bold text-xs w-4">{idx + 1}</span><span className="font-bold text-zinc-700 text-sm">{state.code}</span></div><span className="font-semibold text-zinc-900 text-sm group-hover:text-blue-600 transition-colors">{formatCurrency(state.rev)}</span></div>))}
+            {topStates.map((state, idx) => (
+              <div key={state.code} className="flex items-center justify-between group">
+                <div className="flex items-center space-x-3">
+                  <span className="text-zinc-300 font-bold text-xs w-4">{idx + 1}</span>
+                  <span className="font-bold text-zinc-700 text-sm">{state.code}</span>
+                </div>
+                <span className="font-semibold text-zinc-900 text-sm group-hover:text-blue-600 transition-colors">{formatCurrency(state.rev)}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -633,8 +853,14 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
           <div className="absolute top-0 right-0 p-6 opacity-[0.03] transition-transform duration-700 group-hover:scale-110 group-hover:rotate-12"><Target size={150} /></div>
           <h3 className="font-bold text-zinc-900 text-lg mb-8 z-10">Acquisition vs LTV</h3>
           <div className="flex-1 flex flex-col justify-center items-center z-10 relative">
-            <svg viewBox="0 0 36 36" className="w-40 h-40 transform -rotate-90 drop-shadow-sm"><circle cx="18" cy="18" r="15.915" fill="transparent" stroke="#f4f4f5" strokeWidth="4" /><circle cx="18" cy="18" r="15.915" fill="transparent" stroke={cacData.isHealthy ? '#10b981' : '#f43f5e'} strokeWidth="4" strokeDasharray={`${Math.min(100, (cacData.ratio / 4) * 100)} 100`} strokeLinecap="round" className="transition-all duration-1000 ease-out" /></svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center mt-2"><span className="text-[10px] text-zinc-400 uppercase font-bold mb-0.5">ROAS Ratio</span><span className={`text-2xl font-bold ${cacData.isHealthy ? 'text-emerald-600' : 'text-rose-600'}`}>{cacData.ratio.toFixed(1)}x</span></div>
+            <svg viewBox="0 0 36 36" className="w-40 h-40 transform -rotate-90 drop-shadow-sm">
+              <circle cx="18" cy="18" r="15.915" fill="transparent" stroke="#f4f4f5" strokeWidth="4" />
+              <circle cx="18" cy="18" r="15.915" fill="transparent" stroke={cacData.isHealthy ? '#10b981' : '#f43f5e'} strokeWidth="4" strokeDasharray={`${Math.min(100, (cacData.ratio / 4) * 100)} 100`} strokeLinecap="round" className="transition-all duration-1000 ease-out" />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center mt-2">
+              <span className="text-[10px] text-zinc-400 uppercase font-bold mb-0.5">ROAS Ratio</span>
+              <span className={`text-2xl font-bold ${cacData.isHealthy ? 'text-emerald-600' : 'text-rose-600'}`}>{cacData.ratio.toFixed(1)}x</span>
+            </div>
           </div>
           <div className="mt-6 pt-6 border-t border-zinc-100 space-y-3 z-10">
             <div className="flex justify-between items-center text-sm"><span className="font-medium text-zinc-500">CAC</span><span className="font-bold text-zinc-900">{formatCurrency(cacData.cac)}</span></div>
@@ -643,10 +869,17 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
         </div>
 
         <div className="lg:col-span-2 bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col">
-          <div className="flex items-center justify-between mb-8"><h3 className="font-bold text-zinc-900 text-lg">Cash Flow</h3><div className="flex space-x-4 text-[11px] font-bold uppercase text-zinc-500"><div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-zinc-900 mr-2"></span> Rev</div><div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-zinc-300 mr-2"></span> Exp</div></div></div>
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="font-bold text-zinc-900 text-lg">Cash Flow</h3>
+            <div className="flex space-x-4 text-[11px] font-bold uppercase text-zinc-500">
+              <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-zinc-900 mr-2"></span> Rev</div>
+              <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-zinc-300 mr-2"></span> Exp</div>
+            </div>
+          </div>
           <div className="flex-1 min-h-[250px] flex items-end space-x-2 sm:space-x-6 pb-6 border-b border-zinc-100 overflow-x-auto hide-scrollbar pt-10">
             {monthlyData.map((data) => {
-              const [year, month] = data.month.split('-'); const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'short' });
+              const [year, month] = data.month.split('-'); 
+              const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'short' });
               return (
                 <div key={data.month} className="flex flex-col items-center flex-1 min-w-[50px] group relative">
                   <div className="absolute bottom-[40%] left-1/2 transform -translate-x-1/2 bg-zinc-900/95 backdrop-blur-sm border border-zinc-800 text-white px-5 py-4 rounded-2xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all z-50 pointer-events-none flex flex-col gap-2">
@@ -745,10 +978,10 @@ function ProductionBoard({ activeOrders, printJobs, appSettings, handleUpdateSet
     if(showToast) showToast(`Order fulfilled and shipped!`, 'success');
   };
 
-  const handleDismissOrder = (order) => {
-    handleUpdateRecord('revenues', order.id, { fulfillmentStatus: 'dismissed' });
+  const handleRemoveFromQueue = (order) => {
+    handleUpdateRecord('revenues', order.id, { fulfillmentStatus: '' });
     printJobs.filter(j => j.assignedTo === order.id).forEach(j => handleDelete('printJobs', j.id));
-    if(showToast) showToast(`Order dismissed from production queue.`, 'success');
+    if(showToast) showToast(`Order returned to Revenue log.`, 'success');
   };
 
   const queuedJobs = printJobs.filter(j => j.status === 'queued');
@@ -761,7 +994,10 @@ function ProductionBoard({ activeOrders, printJobs, appSettings, handleUpdateSet
     const assignedText = job.assignedTo === 'buffer' ? 'Safety Buffer (Stock)' : (orderObj?.desc || 'Unknown Order');
     return (
       <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-sm group hover:shadow-md transition-all">
-         <div className="flex justify-between items-start mb-3"><span className={`text-[10px] font-bold uppercase px-2 py-1 rounded border ${isBase ? 'bg-zinc-100 text-zinc-700' : 'bg-blue-50 text-blue-700'}`}>{job.part}</span><button onClick={() => { handleDelete('printJobs', job.id); if(showToast) showToast("Print job deleted."); }} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><X size={14}/></button></div>
+         <div className="flex justify-between items-start mb-3">
+           <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded border ${isBase ? 'bg-zinc-100 text-zinc-700' : 'bg-blue-50 text-blue-700'}`}>{job.part}</span>
+           <button onClick={() => { handleDelete('printJobs', job.id); if(showToast) showToast("Print job deleted."); }} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><X size={14}/></button>
+         </div>
          <div className="font-semibold text-sm text-zinc-900 line-clamp-2">{assignedText}</div>
          {orderObj?.orderNum && <div className="text-[10px] font-mono text-zinc-500 mt-1">{orderObj.orderNum}</div>}
          <div className="mt-4 pt-3 border-t border-zinc-100 flex gap-2">
@@ -780,12 +1016,38 @@ function ProductionBoard({ activeOrders, printJobs, appSettings, handleUpdateSet
         <div className="flex items-center z-10 w-full lg:w-auto"><div className="p-4 bg-zinc-800 rounded-full mr-5 text-emerald-400"><ShieldCheck size={36} /></div><div><h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Component Buffers</h2><p className="text-sm mt-1 text-zinc-400">Mix and match components to secure your 72-hour window.</p></div></div>
         <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto z-10">
            <div className="flex-1 bg-white/10 backdrop-blur-md border border-white/5 p-4 rounded-2xl flex items-center justify-between min-w-[200px]">
-              <div><div className="text-[10px] font-bold uppercase text-zinc-400 mb-1">Base Stock</div><div className="flex items-end"><span className="text-3xl font-bold text-white">{baseBuffer}</span><span className="text-sm text-zinc-500 font-medium mb-1 ml-1.5">/ {targetBases}</span><div className="flex flex-col ml-2 mb-1"><button onClick={()=>adjustTarget('base', 1)} className="text-zinc-500 hover:text-white"><ChevronUp size={12}/></button><button onClick={()=>adjustTarget('base', -1)} className="text-zinc-500 hover:text-white"><ChevronDown size={12}/></button></div></div></div>
-              <div className="flex flex-col gap-1.5 ml-4"><button onClick={()=>adjustBuffer('base', 1)} className="bg-zinc-800 text-white p-2 rounded-lg"><Plus size={14}/></button><button onClick={()=>adjustBuffer('base', -1)} className="bg-zinc-800 text-white p-2 rounded-lg"><ChevronDown size={14}/></button></div>
+              <div>
+                <div className="text-[10px] font-bold uppercase text-zinc-400 mb-1">Base Stock</div>
+                <div className="flex items-end">
+                  <span className="text-3xl font-bold text-white">{baseBuffer}</span>
+                  <span className="text-sm text-zinc-500 font-medium mb-1 ml-1.5">/ {targetBases}</span>
+                  <div className="flex flex-col ml-2 mb-1">
+                    <button onClick={()=>adjustTarget('base', 1)} className="text-zinc-500 hover:text-white"><ChevronUp size={12}/></button>
+                    <button onClick={()=>adjustTarget('base', -1)} className="text-zinc-500 hover:text-white"><ChevronDown size={12}/></button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5 ml-4">
+                <button onClick={()=>adjustBuffer('base', 1)} className="bg-zinc-800 text-white p-2 rounded-lg"><Plus size={14}/></button>
+                <button onClick={()=>adjustBuffer('base', -1)} className="bg-zinc-800 text-white p-2 rounded-lg"><ChevronDown size={14}/></button>
+              </div>
            </div>
            <div className="flex-1 bg-white/10 backdrop-blur-md border border-white/5 p-4 rounded-2xl flex items-center justify-between min-w-[200px]">
-              <div><div className="text-[10px] font-bold uppercase text-zinc-400 mb-1">Cover Stock</div><div className="flex items-end"><span className="text-3xl font-bold text-white">{coverBuffer}</span><span className="text-sm text-zinc-500 font-medium mb-1 ml-1.5">/ {targetCovers}</span><div className="flex flex-col ml-2 mb-1"><button onClick={()=>adjustTarget('cover', 1)} className="text-zinc-500 hover:text-white"><ChevronUp size={12}/></button><button onClick={()=>adjustTarget('cover', -1)} className="text-zinc-500 hover:text-white"><ChevronDown size={12}/></button></div></div></div>
-              <div className="flex flex-col gap-1.5 ml-4"><button onClick={()=>adjustBuffer('cover', 1)} className="bg-zinc-800 text-white p-2 rounded-lg"><Plus size={14}/></button><button onClick={()=>adjustBuffer('cover', -1)} className="bg-zinc-800 text-white p-2 rounded-lg"><ChevronDown size={14}/></button></div>
+              <div>
+                <div className="text-[10px] font-bold uppercase text-zinc-400 mb-1">Cover Stock</div>
+                <div className="flex items-end">
+                  <span className="text-3xl font-bold text-white">{coverBuffer}</span>
+                  <span className="text-sm text-zinc-500 font-medium mb-1 ml-1.5">/ {targetCovers}</span>
+                  <div className="flex flex-col ml-2 mb-1">
+                    <button onClick={()=>adjustTarget('cover', 1)} className="text-zinc-500 hover:text-white"><ChevronUp size={12}/></button>
+                    <button onClick={()=>adjustTarget('cover', -1)} className="text-zinc-500 hover:text-white"><ChevronDown size={12}/></button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5 ml-4">
+                <button onClick={()=>adjustBuffer('cover', 1)} className="bg-zinc-800 text-white p-2 rounded-lg"><Plus size={14}/></button>
+                <button onClick={()=>adjustBuffer('cover', -1)} className="bg-zinc-800 text-white p-2 rounded-lg"><ChevronDown size={14}/></button>
+              </div>
            </div>
         </div>
       </div>
@@ -808,15 +1070,20 @@ function ProductionBoard({ activeOrders, printJobs, appSettings, handleUpdateSet
                  const readyBases = printJobs.filter(j => j.assignedTo === order.id && j.part === 'Base' && j.status === 'ready').length;
                  const readyCovers = printJobs.filter(j => j.assignedTo === order.id && j.part === 'Cover' && j.status === 'ready').length;
                  const missingBases = Math.max(0, reqQty - readyBases); const missingCovers = Math.max(0, reqQty - readyCovers);
+                 
                  return (
                    <tr key={order.id} className="hover:bg-zinc-50/50 transition-colors">
                       <td className="py-4 pr-4"><div className="truncate max-w-[200px] font-medium text-zinc-900">{order.desc}</div><span className="text-[10px] text-zinc-400 font-mono mt-0.5 block">{order.orderNum || 'Manual Log'}</span></td>
                       <td className="py-4 px-4 text-center font-bold text-lg">{reqQty}</td>
-                      <td className="py-4 px-4">{readyBases >= reqQty ? <span className="inline-flex items-center text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md text-xs font-bold border border-emerald-200"><CheckCircle2 size={12} className="mr-1"/> Ready</span> : <div className="flex flex-col"><span className="text-zinc-800 text-xs font-semibold">{readyBases} / {reqQty} Assigned</span>{missingBases <= baseBuffer ? <span className="text-[10px] text-blue-600 font-medium">+ {missingBases} available in buffer</span> : <span className="text-[10px] text-red-500 font-medium">Missing {missingBases - baseBuffer} (Queue print)</span>}</div>}</td>
-                      <td className="py-4 px-4">{readyCovers >= reqQty ? <span className="inline-flex items-center text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md text-xs font-bold border border-emerald-200"><CheckCircle2 size={12} className="mr-1"/> Ready</span> : <div className="flex flex-col"><span className="text-zinc-800 text-xs font-semibold">{readyCovers} / {reqQty} Assigned</span>{missingCovers <= coverBuffer ? <span className="text-[10px] text-blue-600 font-medium">+ {missingCovers} available in buffer</span> : <span className="text-[10px] text-red-500 font-medium">Missing {missingCovers - coverBuffer} (Queue print)</span>}</div>}</td>
+                      <td className="py-4 px-4">
+                        {readyBases >= reqQty ? <span className="inline-flex items-center text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md text-xs font-bold border border-emerald-200"><CheckCircle2 size={12} className="mr-1"/> Ready</span> : <div className="flex flex-col"><span className="text-zinc-800 text-xs font-semibold">{readyBases} / {reqQty} Assigned</span>{missingBases <= baseBuffer ? <span className="text-[10px] text-blue-600 font-medium">+ {missingBases} available in buffer</span> : <span className="text-[10px] text-red-500 font-medium">Missing {missingBases - baseBuffer} (Queue print)</span>}</div>}
+                      </td>
+                      <td className="py-4 px-4">
+                        {readyCovers >= reqQty ? <span className="inline-flex items-center text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md text-xs font-bold border border-emerald-200"><CheckCircle2 size={12} className="mr-1"/> Ready</span> : <div className="flex flex-col"><span className="text-zinc-800 text-xs font-semibold">{readyCovers} / {reqQty} Assigned</span>{missingCovers <= coverBuffer ? <span className="text-[10px] text-blue-600 font-medium">+ {missingCovers} available in buffer</span> : <span className="text-[10px] text-red-500 font-medium">Missing {missingCovers - coverBuffer} (Queue print)</span>}</div>}
+                      </td>
                       <td className="py-4 pl-4 text-right">
                          <div className="flex justify-end space-x-2">
-                           <button onClick={() => handleDismissOrder(order)} className="bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-700 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center" title="Remove from queue without using stock"><X size={14} className="sm:mr-1.5" /> <span className="hidden sm:inline">Dismiss</span></button>
+                           <button onClick={() => handleRemoveFromQueue(order)} className="bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-700 text-xs font-bold py-2.5 px-3 rounded-xl transition-all shadow-sm flex items-center justify-center" title="Remove from queue without using stock"><X size={14} className="sm:mr-1.5" /> <span className="hidden sm:inline">Remove</span></button>
                            <button disabled={missingBases > baseBuffer || missingCovers > coverBuffer} onClick={() => handleShipOrder(order, missingBases, missingCovers)} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-200 disabled:text-zinc-400 text-white text-xs font-bold py-2.5 px-4 rounded-xl flex items-center shadow-sm ml-auto"><PackageOpen size={14} className="mr-1.5" /> Fulfill</button>
                          </div>
                       </td>
@@ -829,9 +1096,18 @@ function ProductionBoard({ activeOrders, printJobs, appSettings, handleUpdateSet
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-         <div className="bg-zinc-50 rounded-3xl p-5 border border-zinc-200"><div className="flex justify-between items-center mb-5"><h3 className="font-bold text-zinc-900 flex items-center"><Inbox size={16} className="mr-2 text-zinc-400"/> Print Queue</h3>{queuedJobs.length > 0 && <button onClick={() => { queuedJobs.forEach(j => handleDelete('printJobs', j.id)); if(showToast) showToast("Queue cleared."); }} className="text-[10px] uppercase font-bold text-zinc-400 hover:text-red-500 bg-zinc-200/50 hover:bg-red-50 px-2 py-1 rounded">Clear</button>}</div><div className="space-y-3">{queuedJobs.map(j => <JobCard key={j.id} job={j}/>)}</div></div>
-         <div className="bg-blue-50/50 rounded-3xl p-5 border border-blue-100"><div className="flex justify-between items-center mb-5"><h3 className="font-bold text-blue-900 flex items-center"><Settings size={16} className="mr-2 text-blue-500 animate-[spin_4s_linear_infinite]"/> Printers Active</h3>{printingJobs.length > 0 && <button onClick={() => { printingJobs.forEach(j => handleDelete('printJobs', j.id)); if(showToast) showToast("Active prints cleared."); }} className="text-[10px] uppercase font-bold text-blue-400 hover:text-red-500 bg-blue-100 hover:bg-red-50 px-2 py-1 rounded">Clear</button>}</div><div className="space-y-3">{printingJobs.map(j => <JobCard key={j.id} job={j}/>)}</div></div>
-         <div className="bg-emerald-50/50 rounded-3xl p-5 border border-emerald-100"><div className="flex justify-between items-center mb-5"><h3 className="font-bold text-emerald-900 flex items-center"><Package size={16} className="mr-2 text-emerald-500"/> Assigned to Order</h3>{readyJobs.length > 0 && <button onClick={() => { readyJobs.forEach(j => handleDelete('printJobs', j.id)); if(showToast) showToast("Completed prints cleared."); }} className="text-[10px] uppercase font-bold text-emerald-500 hover:text-red-500 bg-emerald-100/50 hover:bg-red-50 px-2 py-1 rounded">Clear</button>}</div><div className="space-y-3">{readyJobs.map(j => <JobCard key={j.id} job={j}/>)}</div></div>
+         <div className="bg-zinc-50 rounded-3xl p-5 border border-zinc-200">
+           <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-zinc-900 flex items-center"><Inbox size={16} className="mr-2 text-zinc-400"/> Print Queue</h3>{queuedJobs.length > 0 && <button onClick={() => { queuedJobs.forEach(j => handleDelete('printJobs', j.id)); if(showToast) showToast("Queue cleared."); }} className="text-[10px] uppercase font-bold text-zinc-400 hover:text-red-500 bg-zinc-200/50 hover:bg-red-50 px-2 py-1 rounded">Clear</button>}</div>
+           <div className="space-y-3">{queuedJobs.map(j => <JobCard key={j.id} job={j}/>)}</div>
+         </div>
+         <div className="bg-blue-50/50 rounded-3xl p-5 border border-blue-100">
+           <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-blue-900 flex items-center"><Settings size={16} className="mr-2 text-blue-500 animate-[spin_4s_linear_infinite]"/> Printers Active</h3>{printingJobs.length > 0 && <button onClick={() => { printingJobs.forEach(j => handleDelete('printJobs', j.id)); if(showToast) showToast("Active prints cleared."); }} className="text-[10px] uppercase font-bold text-blue-400 hover:text-red-500 bg-blue-100 hover:bg-red-50 px-2 py-1 rounded">Clear</button>}</div>
+           <div className="space-y-3">{printingJobs.map(j => <JobCard key={j.id} job={j}/>)}</div>
+         </div>
+         <div className="bg-emerald-50/50 rounded-3xl p-5 border border-emerald-100">
+           <div className="flex justify-between items-center mb-5"><h3 className="font-bold text-emerald-900 flex items-center"><Package size={16} className="mr-2 text-emerald-500"/> Assigned to Order</h3>{readyJobs.length > 0 && <button onClick={() => { readyJobs.forEach(j => handleDelete('printJobs', j.id)); if(showToast) showToast("Completed prints cleared."); }} className="text-[10px] uppercase font-bold text-emerald-500 hover:text-red-500 bg-emerald-100/50 hover:bg-red-50 px-2 py-1 rounded">Clear</button>}</div>
+           <div className="space-y-3">{readyJobs.map(j => <JobCard key={j.id} job={j}/>)}</div>
+         </div>
       </div>
     </div>
   );
@@ -918,130 +1194,6 @@ function FleetCommand({ machines, totalTrueProfit, totalUnitsSold, onAdd, onDele
       <div className="bg-zinc-50/50 rounded-3xl border border-dashed border-zinc-200 p-8 flex flex-col justify-center max-w-md mt-6">
         <h3 className="font-bold text-zinc-700 mb-4 flex items-center"><Plus size={16} className="mr-2"/> Register Asset</h3>
         <form onSubmit={addRow} className="space-y-3"><input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required /><input type="text" placeholder="Asset Name" className={inlineInputStyle} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required /><input type="number" step="0.01" placeholder="Purchase Cost ($)" className={inlineInputStyle} value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} required /><button type="submit" className="w-full bg-zinc-800 text-white font-semibold py-2 rounded-lg mt-2 text-sm">Save Hardware</button></form>
-      </div>
-    </div>
-  );
-}
-
-function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, formatCurrency, showToast }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', salesTax: '', ebay: '', ad: '', shipping: '', state: '' });
-  const [importPreview, setImportPreview] = useState(null); const [importStats, setImportStats] = useState({ total: 0, unchanged: 0, updated: 0, new: 0 });
-  const [editingId, setEditingId] = useState(null); const [editForm, setEditForm] = useState({}); const [showFees, setShowFees] = useState(false);
-  const fileInputRef = useRef(null);
-
-  const enrichedRevenues = useMemo(() => revenues.map(r => {
-    const net = Number(r.gross) - Number(r.ebay || 0) - Number(r.ad || 0) - Number(r.shipping || 0) - Number(r.salesTax || 0);
-    const qty = Number(r.qty || 1); const trueProfit = net - (costPerTrainer * qty);
-    return { ...r, qty, net, trueProfit, margin: Number(r.gross) > 0 ? (trueProfit / Number(r.gross)) * 100 : 0 };
-  }), [revenues, costPerTrainer]);
-  const { items: sortedRevenues, requestSort, sortConfig } = useSortableData(enrichedRevenues);
-
-  const addRow = (e) => { e.preventDefault(); if (!formData.gross) return; onAdd(formData); setFormData({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', salesTax: '', ebay: '', ad: '', shipping: '', state: '' }); setShowFees(false); };
-  const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item }); };
-  const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
-  const handleExport = () => { exportToCsv('Apex_Revenues.csv', [['Date', 'Order #', 'State', 'Description', 'Qty', 'Total Paid (Gross)', 'Sales Tax', 'eBay Fee', 'Ad Fee', 'Shipping', 'Net Payout', 'True Profit', 'Margin %'], ...sortedRevenues.map(r => [r.date, r.orderNum, r.state, r.desc, r.qty, r.gross, r.salesTax || 0, r.ebay || 0, r.ad || 0, r.shipping || 0, r.net, r.trueProfit, r.margin.toFixed(1)])]); };
-
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0]; if (!file) return; const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target.result; const parsed = parseCSV(text); let headerIdx = 0;
-      while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].some(h => h && (h.includes('Order Number') || h.includes('Order number'))))) headerIdx++;
-      if (headerIdx >= parsed.length) { alert("Could not find 'Order Number' header."); return; }
-      
-      const headers = parsed[headerIdx]; const findHeader = (str) => headers.findIndex(h => h && h.toLowerCase().includes(str.toLowerCase()));
-      const dateIdx = findHeader('Transaction creation date') > -1 ? findHeader('Transaction creation date') : findHeader('Sale Date'); 
-      const orderIdx = findHeader('Order number'); const typeIdx = findHeader('Type'); const titleIdx = findHeader('Item title'); const qtyIdx = findHeader('Quantity'); const stateIdx = findHeader('Ship to province/region/state') > -1 ? findHeader('Ship to province/region/state') : findHeader('Ship to State');
-      const taxIdx = headers.findIndex(h => h && (h.toLowerCase().includes('sales tax') || h.toLowerCase().includes('ebay collected tax')));
-      let grossIdx = findHeader('Gross transaction amount'); if (grossIdx === -1) grossIdx = findHeader('Total Paid'); if (grossIdx === -1) grossIdx = findHeader('Total Price');
-      const soldForIdx = findHeader('Sold For'); const shipHandIdx = findHeader('Shipping And Handling'); const netIdx = findHeader('Net amount'); const descColIdx = findHeader('Description');
-
-      const feeIndices = new Set(); headers.forEach((h, idx) => { if ((h || '').toLowerCase().includes('fee') || (h || '').toLowerCase().includes('final value')) feeIndices.add(idx); });
-      ['Final Value Fee - variable', 'Final Value Fee - fixed', 'Regulatory operating fee', 'International fee'].forEach(feeName => { const idx = findHeader(feeName); if (idx > -1) feeIndices.add(idx); });
-
-      const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
-      const ordersMap = new Map();
-
-      for (let i = headerIdx + 1; i < parsed.length; i++) {
-        const row = parsed[i]; if (row.length < headers.length) continue;
-        let orderNum = row[orderIdx] ? row[orderIdx].trim() : '';
-        if (!orderNum || orderNum.startsWith('--')) { const refIdx = findHeader('Reference ID'); let refId = refIdx > -1 ? row[refIdx] : ''; if (refId && refId !== '--') orderNum = refId; else orderNum = 'Misc-' + i; }
-        const type = typeIdx > -1 ? (row[typeIdx] || '').toLowerCase() : 'order'; if (type === 'payout' || type === 'transfer') continue; 
-        
-        if (!ordersMap.has(orderNum)) ordersMap.set(orderNum, { orderNum: orderNum.startsWith('Misc-') ? '' : orderNum, date: '', desc: '', state: '', qty: 0, gross: 0, salesTax: 0, ebay: 0, ad: 0, shipping: 0 });
-        const rec = ordersMap.get(orderNum);
-        
-        const cleanNum = (val) => { if (!val) return 0; let str = val.toString().trim(); if (str === '--' || str === '-' || str === '') return 0; const isNegative = str.startsWith('-') || (str.startsWith('(') && str.endsWith(')')); const num = parseFloat(str.replace(/[^0-9.]/g, '')); return isNaN(num) ? 0 : (isNegative ? -num : num); };
-        let rawGross = grossIdx > -1 ? cleanNum(row[grossIdx]) : (soldForIdx > -1 ? cleanNum(row[soldForIdx]) + (shipHandIdx > -1 ? cleanNum(row[shipHandIdx]) : 0) : 0);
-        let rawTax = taxIdx > -1 ? cleanNum(row[taxIdx]) : 0; let rawNet = netIdx > -1 ? cleanNum(row[netIdx]) : 0; let rowQty = qtyIdx > -1 ? cleanNum(row[qtyIdx]) : 0;
-        let sumFees = 0; feeIndices.forEach(idx => sumFees += Math.abs(cleanNum(row[idx])));
-
-        const desc = descColIdx > -1 ? (row[descColIdx] || '').trim() : ''; const title = titleIdx > -1 ? (row[titleIdx] || '').trim() : '';
-        const cleanTitle = title === '--' ? '' : title; const cleanDesc = desc === '--' ? '' : desc;
-        let adjustedGross = (headers[grossIdx] && headers[grossIdx].toLowerCase() === 'gross transaction amount') ? rawGross + rawTax : rawGross;
-
-        if (type.includes('order') || type === 'sale' || !rec.date) {
-          if (row[dateIdx] && !rec.date && row[dateIdx] !== '--') { const d = new Date(row[dateIdx]); if (!isNaN(d.getTime())) rec.date = d.toLocaleDateString('en-CA'); else { const parts = row[dateIdx].split('-'); if (parts.length === 3) rec.date = `20${parts[2]}-${months[parts[0]] || '01'}-${parts[1].padStart(2, '0')}`; else rec.date = row[dateIdx]; } }
-          if (cleanTitle && (!rec.desc || rec.desc === 'eBay Sale' || rec.desc.startsWith('Shipping') || rec.desc.startsWith('Ad') || rec.desc === '--')) rec.desc = cleanTitle;
-          if (stateIdx > -1 && row[stateIdx] && row[stateIdx] !== '--' && !rec.state) rec.state = row[stateIdx].toUpperCase().trim();
-          if (rowQty > 0 && (type.includes('order') || type === 'sale')) rec.qty += rowQty;
-        }
-
-        if (type.includes('shipping label')) { rec.shipping += Math.abs(rawNet || rawGross); if(!rec.desc || rec.desc === '--') rec.desc = 'Shipping Label'; } 
-        else if (type.includes('other fee') || type.includes('ad fee') || cleanDesc.toLowerCase().includes('promoted')) { rec.ad += Math.abs(rawNet || sumFees || rawGross); if(!rec.desc || rec.desc === '--') rec.desc = 'Ad Fee / Other'; } 
-        else if (type.includes('refund')) { rec.gross += adjustedGross; rec.salesTax -= Math.abs(rawTax); rec.ebay -= Math.abs(sumFees); } 
-        else { rec.gross += adjustedGross; rec.salesTax += Math.abs(rawTax); rec.ebay += Math.abs(sumFees); if (!rec.desc || rec.desc === 'Shipping Label' || rec.desc === 'Ad Fee / Other' || rec.desc === '--') rec.desc = cleanTitle || cleanDesc || 'eBay Sale'; }
-      }
-
-      const newRows = []; let unchangedCount = 0; let updatedCount = 0; let index = 0;
-      for (const [orderNum, rec] of ordersMap.entries()) {
-        const existingRecord = revenues.find(r => r.orderNum === orderNum);
-        if (existingRecord) {
-          let needsUpdate = false; let updates = {};
-          if (rec.gross !== 0 && Number(existingRecord.gross || 0) !== Number(rec.gross.toFixed(2))) { updates.gross = rec.gross.toFixed(2); needsUpdate = true; }
-          if (rec.salesTax !== 0 && Number(existingRecord.salesTax || 0) !== Number(rec.salesTax.toFixed(2))) { updates.salesTax = rec.salesTax.toFixed(2); needsUpdate = true; }
-          if (rec.ebay !== 0 && Number(existingRecord.ebay || 0) !== Number(rec.ebay.toFixed(2))) { updates.ebay = rec.ebay.toFixed(2); needsUpdate = true; }
-          if (rec.ad !== 0 && Number(existingRecord.ad || 0) !== Number(rec.ad.toFixed(2))) { updates.ad = rec.ad.toFixed(2); needsUpdate = true; }
-          if (rec.shipping !== 0 && Number(existingRecord.shipping || 0) !== Number(rec.shipping.toFixed(2))) { updates.shipping = rec.shipping.toFixed(2); needsUpdate = true; }
-          if (rec.state && existingRecord.state !== rec.state) { updates.state = rec.state; needsUpdate = true; }
-          if (rec.qty > 0 && Number(existingRecord.qty || 1) !== rec.qty) { updates.qty = rec.qty; needsUpdate = true; }
-          if (rec.desc && rec.desc !== 'eBay Sale' && existingRecord.desc !== rec.desc) { updates.desc = rec.desc; needsUpdate = true; }
-          if (needsUpdate) { newRows.push({ ...existingRecord, ...updates, isUpdate: true }); updatedCount++; } else unchangedCount++;
-          continue;
-        }
-        newRows.push({ id: Date.now() + index++, date: rec.date, orderNum: rec.orderNum, desc: rec.desc || 'eBay Sale', state: rec.state, qty: rec.qty || 1, gross: rec.gross.toFixed(2), salesTax: rec.salesTax.toFixed(2), ebay: rec.ebay > 0 ? rec.ebay.toFixed(2) : '', ad: rec.ad > 0 ? rec.ad.toFixed(2) : '', shipping: rec.shipping > 0 ? rec.shipping.toFixed(2) : '', isUpdate: false });
-      }
-      setImportStats({ total: ordersMap.size, unchanged: unchangedCount, updated: updatedCount, new: newRows.filter(r => !r.isUpdate).length });
-      setImportPreview(newRows);
-    };
-    reader.readAsText(file); e.target.value = ''; 
-  };
-
-  const confirmImport = () => { importPreview.forEach(r => { const payload = { ...r }; delete payload.isUpdate; delete payload.net; delete payload.trueProfit; delete payload.margin; if (r.isUpdate) onUpdate(r.id, payload); else onAdd(payload); }); setImportPreview(null); if(showToast) showToast('Records imported successfully.'); };
-
-  return (
-    <div className="space-y-8 animate-in fade-in">
-      {importPreview && (
-        <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm"><div className="bg-white rounded-[2rem] shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden"><div className="p-8 border-b border-zinc-100 flex justify-between items-center"><div><h2 className="text-xl font-bold text-zinc-900">Review Import</h2><p className="text-sm text-zinc-500"><strong className="text-emerald-600">{importStats.new} new</strong> and <strong className="text-amber-500">{importStats.updated} updates</strong>.</p></div><button onClick={() => setImportPreview(null)} className="text-zinc-400 bg-zinc-100 p-2 rounded-full"><X size={20}/></button></div><div className="overflow-y-auto p-8 bg-[#fbfbfd] flex-1"><table className="w-full text-left text-sm whitespace-nowrap"><thead className="bg-zinc-50 border-b"><tr><th className="px-6 py-4">Date</th><th className="px-6 py-4">Order</th><th className="px-6 py-4">Item</th><th className="px-6 py-4">Qty</th><th className="px-6 py-4">Gross</th><th className="px-6 py-4">Tax</th><th className="px-6 py-4">eBay Fee</th><th className="px-6 py-4">Ad Fee</th><th className="px-6 py-4">Ship</th></tr></thead><tbody>{importPreview.map(r => (<tr key={r.id} className="hover:bg-zinc-50"><td className="px-6 py-3">{r.date}</td><td className="px-6 py-3 font-mono text-xs">{r.orderNum}</td><td className="px-6 py-3">{r.desc}</td><td className="px-6 py-3">{r.qty}</td><td className="px-6 py-3">{formatCurrency(r.gross)}</td><td className="px-6 py-3">{formatCurrency(r.salesTax)}</td><td className="px-3 py-2"><input type="number" step="0.01" className="w-20 border rounded px-2" value={r.ebay} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ebay: e.target.value } : pr))}/></td><td className="px-3 py-2"><input type="number" step="0.01" className="w-20 border rounded px-2" value={r.ad} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ad: e.target.value } : pr))}/></td><td className="px-3 py-2"><input type="number" step="0.01" className="w-20 border rounded px-2" value={r.shipping} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, shipping: e.target.value } : pr))}/></td></tr>))}</tbody></table></div><div className="p-6 border-t bg-white flex justify-end space-x-3"><button onClick={confirmImport} className="px-8 py-3 rounded-xl bg-zinc-900 text-white font-semibold flex items-center">Save Records</button></div></div></div>
-      )}
-      <div className="bg-white/80 rounded-3xl border border-zinc-100 p-8 shadow-sm">
-        <h2 className="text-lg font-bold mb-6">Log Manual Sale</h2>
-        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-4 items-end"><input type="date" className={`${inlineInputStyle} col-span-1`} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required /><input type="text" placeholder="Order #" className={`${inlineInputStyle} col-span-1`} value={formData.orderNum} onChange={e => setFormData({...formData, orderNum: e.target.value})} /><input type="text" maxLength="2" placeholder="State" className={`${inlineInputStyle} col-span-1`} value={formData.state} onChange={e => setFormData({...formData, state: e.target.value.toUpperCase()})} /><input type="text" placeholder="Description" className={`${inlineInputStyle} col-span-1`} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required /><input type="number" step="0.01" placeholder="Gross ($)" className={`${inlineInputStyle} col-span-1`} value={formData.gross} onChange={e => setFormData({...formData, gross: e.target.value})} required />{!showFees ? (<div className="lg:col-span-3 flex items-center w-full"><button type="button" onClick={() => setShowFees(true)} className="w-full py-2 border border-dashed rounded-lg text-[10px] font-bold uppercase text-zinc-500">Add Fees</button></div>) : (<div className="lg:col-span-3 grid grid-cols-4 gap-2"><input type="number" step="0.01" placeholder="Tax" className={`${inlineInputStyle} px-2`} value={formData.salesTax} onChange={e => setFormData({...formData, salesTax: e.target.value})} /><input type="number" step="0.01" placeholder="eBay" className={`${inlineInputStyle} px-2`} value={formData.ebay} onChange={e => setFormData({...formData, ebay: e.target.value})} /><input type="number" step="0.01" placeholder="Ad" className={`${inlineInputStyle} px-2`} value={formData.ad} onChange={e => setFormData({...formData, ad: e.target.value})} /><input type="number" step="0.01" placeholder="Ship" className={`${inlineInputStyle} px-2`} value={formData.shipping} onChange={e => setFormData({...formData, shipping: e.target.value})} /></div>)}<button type="submit" className="lg:col-span-8 bg-zinc-900 text-white font-semibold py-3 rounded-xl mt-2">Add Record</button></form>
-      </div>
-      <div className="bg-white/80 rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
-        <div className="p-6 border-b flex justify-between items-center"><div><h3 className="font-bold text-lg">Sales Ledger</h3><p className="text-xs text-zinc-400 mt-1">COGS: {formatCurrency(costPerTrainer)}</p></div><div className="flex space-x-3"><input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileUpload} /><button onClick={() => fileInputRef.current.click()} className="text-[11px] font-bold uppercase bg-zinc-50 border px-4 py-2 rounded-full">Import CSV</button><button onClick={handleExport} className="text-[11px] font-bold uppercase bg-blue-50 border text-blue-600 px-4 py-2 rounded-full">Export</button></div></div>
-        <div className="overflow-x-auto"><table className="w-full text-left text-sm whitespace-nowrap"><thead className="bg-zinc-50/50"><tr><SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} /><SortableHeader label="Order" sortKey="orderNum" currentSort={sortConfig} requestSort={requestSort} /><SortableHeader label="ST" sortKey="state" currentSort={sortConfig} requestSort={requestSort} /><SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} /><SortableHeader label="Qty" sortKey="qty" currentSort={sortConfig} requestSort={requestSort} alignRight /><SortableHeader label="Total Paid" sortKey="gross" currentSort={sortConfig} requestSort={requestSort} alignRight /><SortableHeader label="Fees" sortKey="ebay" currentSort={sortConfig} requestSort={requestSort} alignRight /><SortableHeader label="Net" sortKey="net" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-blue-600" /><SortableHeader label="True Profit" sortKey="trueProfit" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-emerald-600" /><SortableHeader label="Margin" sortKey="margin" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-emerald-600" /><th className="px-6 py-4"></th></tr></thead><tbody className="divide-y divide-zinc-50">{sortedRevenues.length === 0 ? <EmptyState icon={Inbox} title="No sales logged" message="Log a sale or import a CSV." colSpan="11" /> : sortedRevenues.map(r => editingId === r.id ? (<tr key={r.id} className="bg-blue-50/30"><td className="px-2 py-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td><td className="px-2 py-2"><input type="text" className={`${inlineInputStyle} w-20`} value={editForm.orderNum} onChange={ev => setEditForm({...editForm, orderNum: ev.target.value})} /></td><td className="px-2 py-2"><input type="text" maxLength="2" className={`${inlineInputStyle} w-12`} value={editForm.state} onChange={ev => setEditForm({...editForm, state: ev.target.value.toUpperCase()})} /></td><td className="px-2 py-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td><td className="px-2 py-2"><input type="number" min="1" className={`${inlineInputStyle} w-16 text-center`} value={editForm.qty} onChange={ev => setEditForm({...editForm, qty: ev.target.value})} /></td><td className="px-2 py-2"><input type="number" step="0.01" className={`${inlineInputStyle} w-20`} value={editForm.gross} onChange={ev => setEditForm({...editForm, gross: ev.target.value})} /></td><td className="px-2 py-2 flex space-x-1"><input type="number" step="0.01" className={`${inlineInputStyle} w-14`} value={editForm.salesTax} onChange={ev => setEditForm({...editForm, salesTax: ev.target.value})} /><input type="number" step="0.01" className={`${inlineInputStyle} w-14`} value={editForm.ebay} onChange={ev => setEditForm({...editForm, ebay: ev.target.value})} /><input type="number" step="0.01" className={`${inlineInputStyle} w-14`} value={editForm.ad} onChange={ev => setEditForm({...editForm, ad: ev.target.value})} /><input type="number" step="0.01" className={`${inlineInputStyle} w-14`} value={editForm.shipping} onChange={ev => setEditForm({...editForm, shipping: ev.target.value})} /></td><td className="px-6 py-4 text-right">-</td><td className="px-6 py-4 text-right">-</td><td className="px-6 py-4 text-right">-</td><td className="px-4 py-2 text-right space-x-2"><button onClick={saveEdit} className="text-emerald-600 bg-emerald-50 rounded p-1"><Check size={16}/></button><button onClick={() => setEditingId(null)} className="text-zinc-400 bg-zinc-100 rounded p-1"><X size={16}/></button></td></tr>) : (<tr key={r.id} className="hover:bg-zinc-50/50 group"><td className="px-6 py-4 text-zinc-500">{r.date}</td><td className="px-6 py-4 text-zinc-400 font-mono text-[10px]">{r.orderNum || '-'}</td><td className="px-6 py-4 font-bold text-xs">{r.state || '-'}</td><td className="px-6 py-4 truncate max-w-[200px] font-semibold">{r.desc}</td><td className="px-6 py-4 text-center font-bold">{r.qty}</td><td className="px-6 py-4 text-right text-zinc-600">{formatCurrency(r.gross)}</td><td className="px-6 py-4 text-right text-zinc-400">{formatCurrency(Number(r.ebay || 0) + Number(r.ad || 0) + Number(r.shipping || 0) + Number(r.salesTax || 0))}</td><td className="px-6 py-4 text-right font-semibold text-blue-600">{formatCurrency(r.net)}</td><td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(r.trueProfit)}</td><td className="px-6 py-4 text-right font-bold text-emerald-600">{r.margin.toFixed(0)}%</td><td className="px-6 py-4 text-right space-x-3 opacity-0 group-hover:opacity-100"><button onClick={() => startEdit(r)} className="text-zinc-400 hover:text-zinc-900"><Edit2 size={16} /></button><button onClick={() => onDelete(r.id)} className="text-zinc-300 hover:text-red-500"><Trash2 size={16} /></button></td></tr>))}</tbody></table></div>
-      </div>
-    </div>
-  );
-}
-
-function Manufacturing({ cogs, onUpdate, costPerTrainer, blackPetgCostPerGram, whitePetgCostPerGram, formatCurrency }) {
-  const handleChange = (e) => onUpdate({ ...cogs, [e.target.name]: Number(e.target.value) });
-  return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-zinc-900 rounded-[2.5rem] p-10 shadow-2xl text-white flex flex-col justify-center relative overflow-hidden order-1"><div className="absolute top-0 right-0 p-8 opacity-5"><Settings size={200} className="animate-[spin_40s_linear_infinite]" /></div><h2 className="text-2xl font-bold tracking-tight text-white mb-10 z-10">Unit Economics</h2><div className="space-y-5 z-10 text-sm font-medium"><div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Black PETG</span><span className="font-bold tracking-tight">{formatCurrency(blackPetgCostPerGram * (cogs.blackGramsUsed || 533))}</span></div><div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">White PETG</span><span className="font-bold tracking-tight">{formatCurrency(whitePetgCostPerGram * (cogs.whiteGramsUsed || 11))}</span></div><div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Concrete</span><span className="font-bold tracking-tight">{formatCurrency(cogs.concreteCost * cogs.lbsUsed)}</span></div><div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Hardware</span><span className="font-bold tracking-tight">{formatCurrency(Number(cogs.screwsCost || 0) + Number(cogs.insertsCost || 0) + Number(cogs.washersCost || 0))}</span></div><div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Packaging</span><span className="font-bold tracking-tight">{formatCurrency(Number(cogs.boxCost || 0) + Number(cogs.bubbleWrapCost || 0))}</span></div><div className="pt-6 flex justify-between items-end"><span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Total COGS</span><span className="text-5xl font-semibold tracking-tighter text-emerald-400">{formatCurrency(costPerTrainer)}</span></div></div></div>
-        <div className="bg-white/80 rounded-3xl border border-zinc-100 p-8 shadow-sm order-2"><h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-8">Supply Variables</h2><div className="space-y-5 max-h-[60vh] overflow-y-auto pr-2 hide-scrollbar"><h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Raw Materials</h3><div className="grid grid-cols-2 gap-4"><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Black Spool $</label><input type="number" step="0.01" name="blackSpoolCost" value={cogs.blackSpoolCost || ''} onChange={handleChange} className={inlineInputStyle} /></div><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Black Grams</label><input type="number" name="blackGramsUsed" value={cogs.blackGramsUsed || ''} onChange={handleChange} className={inlineInputStyle} /></div></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">White Spool $</label><input type="number" step="0.01" name="whiteSpoolCost" value={cogs.whiteSpoolCost || ''} onChange={handleChange} className={inlineInputStyle} /></div><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">White Grams</label><input type="number" name="whiteGramsUsed" value={cogs.whiteGramsUsed || ''} onChange={handleChange} className={inlineInputStyle} /></div></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Concrete $/lb</label><input type="number" step="0.01" name="concreteCost" value={cogs.concreteCost} onChange={handleChange} className={inlineInputStyle} /></div><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">lbs Used</label><input type="number" step="0.1" name="lbsUsed" value={cogs.lbsUsed} onChange={handleChange} className={inlineInputStyle} /></div></div><hr className="border-zinc-100 my-6" /><h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Hardware</h3><div className="grid grid-cols-3 gap-4"><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Screws</label><input type="number" step="0.01" name="screwsCost" value={cogs.screwsCost} onChange={handleChange} className={inlineInputStyle} /></div><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Inserts</label><input type="number" step="0.01" name="insertsCost" value={cogs.insertsCost} onChange={handleChange} className={inlineInputStyle} /></div><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Washers</label><input type="number" step="0.01" name="washersCost" value={cogs.washersCost} onChange={handleChange} className={inlineInputStyle} /></div></div><hr className="border-zinc-100 my-6" /><h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Packaging</h3><div className="grid grid-cols-2 gap-4"><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Box</label><input type="number" step="0.01" name="boxCost" value={cogs.boxCost} onChange={handleChange} className={inlineInputStyle} /></div><div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Wrap</label><input type="number" step="0.01" name="bubbleWrapCost" value={cogs.bubbleWrapCost} onChange={handleChange} className={inlineInputStyle} /></div></div></div></div>
       </div>
     </div>
   );
