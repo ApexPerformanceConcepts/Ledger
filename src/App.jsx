@@ -218,6 +218,12 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [quickAction, setQuickAction] = useState(null);
   const [isAppReady, setIsAppReady] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   // --- STATE MANAGEMENT ---
   const [revenues, setRevenues] = useState([]);
@@ -226,11 +232,14 @@ export default function App() {
   const [mileages, setMileages] = useState([]);
   const [restocks, setRestocks] = useState([]);
   const [machines, setMachines] = useState([]);
+  const [printJobs, setPrintJobs] = useState([]); 
   
   const [appSettings, setAppSettings] = useState({ 
     initialInvestment: 1219.00,
-    finishedBuffer: 0,
-    targetBuffer: 6
+    baseBuffer: 0,
+    targetBases: 6,
+    coverBuffer: 0,
+    targetCovers: 6
   });
   
   const [cogs, setCogs] = useState({
@@ -267,14 +276,17 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     
-    const unsubRevs = onSnapshot(getColRef('revenues'), (snap) => setRevenues(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
-    const unsubExps = onSnapshot(getColRef('expenses'), (snap) => setExpenses(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
-    const unsubEqs = onSnapshot(getColRef('equities'), (snap) => setEquities(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
-    const unsubMiles = onSnapshot(getColRef('mileages'), (snap) => setMileages(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
-    const unsubRestocks = onSnapshot(getColRef('restocks'), (snap) => setRestocks(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
-    const unsubMachines = onSnapshot(getColRef('machines'), (snap) => setMachines(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const basePath = ['artifacts', appId, 'public', 'data'];
     
-    const unsubCogs = onSnapshot(getDocRef('settings', 'cogs'), (docSnap) => { 
+    const unsubRevs = onSnapshot(collection(db, ...basePath, 'revenues'), (snap) => setRevenues(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubExps = onSnapshot(collection(db, ...basePath, 'expenses'), (snap) => setExpenses(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubEqs = onSnapshot(collection(db, ...basePath, 'equities'), (snap) => setEquities(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubMiles = onSnapshot(collection(db, ...basePath, 'mileages'), (snap) => setMileages(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubRestocks = onSnapshot(collection(db, ...basePath, 'restocks'), (snap) => setRestocks(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubMachines = onSnapshot(collection(db, ...basePath, 'machines'), (snap) => setMachines(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    const unsubPrintJobs = onSnapshot(collection(db, ...basePath, 'printJobs'), (snap) => setPrintJobs(snap.docs.map(d => ({ id: d.id, ...d.data() }))), console.error);
+    
+    const unsubCogs = onSnapshot(doc(db, ...basePath, 'settings', 'cogs'), (docSnap) => { 
       if (docSnap.exists()) {
         const data = docSnap.data();
         setCogs(prev => ({ 
@@ -287,17 +299,14 @@ export default function App() {
       } 
     }, console.error);
     
-    const unsubSettings = onSnapshot(getDocRef('settings', 'app'), (docSnap) => { 
+    const unsubSettings = onSnapshot(doc(db, ...basePath, 'settings', 'app'), (docSnap) => { 
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setAppSettings(prev => ({
-          ...prev,
-          ...data
-        })); 
+        setAppSettings(prev => ({ ...prev, ...data })); 
       } 
     }, console.error);
 
-    return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubRestocks(); unsubMachines(); unsubCogs(); unsubSettings(); };
+    return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubRestocks(); unsubMachines(); unsubPrintJobs(); unsubCogs(); unsubSettings(); };
   }, [user]);
 
   // --- MUTATION HANDLERS ---
@@ -339,12 +348,96 @@ export default function App() {
       return await getDownloadURL(storageRef);
     } catch (err) {
       console.error("Storage upload failed.", err);
-      alert("Upload failed. Make sure Storage is enabled in Test Mode in Firebase.");
+      showToast("Upload failed. Make sure Storage is enabled in Test Mode in Firebase.", "error");
       return null;
     }
   };
 
-  // --- CALCULATIONS & PREDICTIVE SUPPLY CHAIN ---
+  // --- WAREHOUSE & PREDICTIVE ENGINE ---
+  const INVENTORY_START_DATE = '2026-04-29';
+
+  const activeOrders = useMemo(() => {
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    const cutoff = fiveDaysAgo.toISOString().split('T')[0];
+
+    return revenues.filter(r => {
+      if (r.fulfillmentStatus && r.fulfillmentStatus !== 'shipped') return true;
+      if (!r.fulfillmentStatus && r.date >= cutoff && Number(r.qty) > 0) return true;
+      return false;
+    }).sort((a, b) => new Date(a.date) - new Date(b.date)); 
+  }, [revenues]);
+
+  const shippedOrdersUnits = useMemo(() => {
+    const activeIds = new Set(activeOrders.map(o => o.id));
+    return revenues
+      .filter(r => !activeIds.has(r.id) && r.date >= INVENTORY_START_DATE)
+      .reduce((sum, r) => sum + Number(r.qty || 1), 0);
+  }, [revenues, activeOrders]);
+
+  const activeBasePrintJobs = printJobs.filter(j => j.part === 'Base').length;
+  const activeCoverPrintJobs = printJobs.filter(j => j.part === 'Cover').length;
+
+  const totalManufacturedBases = shippedOrdersUnits + Number(appSettings.baseBuffer || 0) + activeBasePrintJobs;
+  const totalManufacturedCovers = shippedOrdersUnits + Number(appSettings.coverBuffer || 0) + activeCoverPrintJobs;
+
+  const fourteenDaysAgoStr = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() - 14);
+    return d.toISOString().split('T')[0];
+  }, []);
+  
+  const recentSales = useMemo(() => revenues.filter(r => r.date >= fourteenDaysAgoStr), [revenues, fourteenDaysAgoStr]);
+  const recentUnitsSold = useMemo(() => recentSales.reduce((sum, r) => sum + Number(r.qty || 1), 0), [recentSales]);
+  const dailySalesVelocity = recentUnitsSold / 14;
+
+  const restockTotals = useMemo(() => {
+    return restocks.reduce((acc, r) => { acc[r.material] = (acc[r.material] || 0) + Number(r.qty || 0); return acc; }, {});
+  }, [restocks]);
+
+  const currentStock = useMemo(() => ({
+    blackPetg: ((restockTotals['Black PETG (grams)'] || 0) + (restockTotals['PETG (grams)'] || 0)) - (totalManufacturedBases * (cogs.blackGramsUsed || 533)),
+    whitePetg: (restockTotals['White PETG (grams)'] || 0) - (totalManufacturedCovers * (cogs.whiteGramsUsed || 11)),
+    concrete: (restockTotals['Concrete (lbs)'] || 0) - (totalManufacturedBases * (cogs.lbsUsed || 5)),
+    boxes: (restockTotals['Boxes (qty)'] || 0) - shippedOrdersUnits,
+    wrap: (restockTotals['Bubble Wrap (qty)'] || 0) - shippedOrdersUnits,
+    screws: (restockTotals['Screws (sets)'] || 0) - shippedOrdersUnits,
+    inserts: (restockTotals['Inserts (sets)'] || 0) - shippedOrdersUnits,
+    washers: (restockTotals['Washers (sets)'] || 0) - shippedOrdersUnits,
+  }), [restockTotals, totalManufacturedBases, totalManufacturedCovers, shippedOrdersUnits, cogs]);
+
+  const buildableUnits = useMemo(() => Math.floor(Math.min(
+    cogs.blackGramsUsed > 0 ? Math.max(0, currentStock.blackPetg / cogs.blackGramsUsed) : Infinity,
+    cogs.whiteGramsUsed > 0 ? Math.max(0, currentStock.whitePetg / cogs.whiteGramsUsed) : Infinity,
+    cogs.lbsUsed > 0 ? Math.max(0, currentStock.concrete / cogs.lbsUsed) : Infinity,
+    Math.max(0, currentStock.boxes), Math.max(0, currentStock.wrap), Math.max(0, currentStock.screws), Math.max(0, currentStock.inserts), Math.max(0, currentStock.washers)
+  )), [currentStock, cogs]);
+
+  const runoutDays = useMemo(() => ({
+    blackPetg: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.blackPetg / (cogs.blackGramsUsed || 1)) / dailySalesVelocity)) : Infinity,
+    whitePetg: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.whitePetg / (cogs.whiteGramsUsed || 1)) / dailySalesVelocity)) : Infinity,
+    concrete: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.concrete / (cogs.lbsUsed || 1)) / dailySalesVelocity)) : Infinity,
+    boxes: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.boxes / dailySalesVelocity)) : Infinity,
+    wrap: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.wrap / dailySalesVelocity)) : Infinity,
+    screws: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.screws / dailySalesVelocity)) : Infinity,
+    inserts: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.inserts / dailySalesVelocity)) : Infinity,
+    washers: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.washers / dailySalesVelocity)) : Infinity,
+  }), [dailySalesVelocity, currentStock, cogs]);
+
+  const lowStockAlerts = useMemo(() => {
+    if (dailySalesVelocity === 0) return [];
+    const alerts = [];
+    if (runoutDays.blackPetg <= 7) alerts.push({ name: 'Black PETG', days: runoutDays.blackPetg });
+    if (runoutDays.whitePetg <= 7) alerts.push({ name: 'White PETG', days: runoutDays.whitePetg });
+    if (runoutDays.concrete <= 7) alerts.push({ name: 'Concrete', days: runoutDays.concrete });
+    if (runoutDays.boxes <= 7) alerts.push({ name: 'Boxes', days: runoutDays.boxes });
+    if (runoutDays.wrap <= 7) alerts.push({ name: 'Bubble Wrap', days: runoutDays.wrap });
+    if (runoutDays.screws <= 7) alerts.push({ name: 'Screws', days: runoutDays.screws });
+    if (runoutDays.inserts <= 7) alerts.push({ name: 'Inserts', days: runoutDays.inserts });
+    if (runoutDays.washers <= 7) alerts.push({ name: 'Washers', days: runoutDays.washers });
+    return alerts;
+  }, [runoutDays, dailySalesVelocity]);
+
+  // --- FINANCIAL CALCULATIONS ---
   const blackPetgCostPerGram = (cogs.blackSpoolCost || 16.99) / 1000;
   const whitePetgCostPerGram = (cogs.whiteSpoolCost || 16.99) / 1000;
   
@@ -391,70 +484,6 @@ export default function App() {
   const isGolfUnlocked = safeCash >= initialGoal;
   const availableGolfFund = isGolfUnlocked ? Math.max(0, safeCash - initialGoal - drawsGolf - drawsOther) : 0;
 
-  // --- WAREHOUSE & PREDICTIVE ENGINE ---
-  const INVENTORY_START_DATE = '2026-04-29';
-  const inventoryUnitsSold = useMemo(() => revenues.filter(r => r.date >= INVENTORY_START_DATE).reduce((sum, r) => sum + Number(r.qty || 1), 0), [revenues]);
-  
-  // Total raw materials consumed is Sales PLUS whatever you've pre-built for the shelf
-  const totalManufacturedUnits = inventoryUnitsSold + Number(appSettings.finishedBuffer || 0);
-
-  const fourteenDaysAgoStr = useMemo(() => {
-    const d = new Date(); d.setDate(d.getDate() - 14);
-    return d.toISOString().split('T')[0];
-  }, []);
-  
-  const recentSales = useMemo(() => revenues.filter(r => r.date >= fourteenDaysAgoStr), [revenues, fourteenDaysAgoStr]);
-  const recentUnitsSold = useMemo(() => recentSales.reduce((sum, r) => sum + Number(r.qty || 1), 0), [recentSales]);
-  const dailySalesVelocity = recentUnitsSold / 14;
-
-  const restockTotals = useMemo(() => {
-    return restocks.reduce((acc, r) => { acc[r.material] = (acc[r.material] || 0) + Number(r.qty || 0); return acc; }, {});
-  }, [restocks]);
-
-  const currentStock = useMemo(() => ({
-    blackPetg: ((restockTotals['Black PETG (grams)'] || 0) + (restockTotals['PETG (grams)'] || 0)) - (totalManufacturedUnits * (cogs.blackGramsUsed || 533)),
-    whitePetg: (restockTotals['White PETG (grams)'] || 0) - (totalManufacturedUnits * (cogs.whiteGramsUsed || 11)),
-    concrete: (restockTotals['Concrete (lbs)'] || 0) - (totalManufacturedUnits * (cogs.lbsUsed || 5)),
-    boxes: (restockTotals['Boxes (qty)'] || 0) - totalManufacturedUnits,
-    wrap: (restockTotals['Bubble Wrap (qty)'] || 0) - totalManufacturedUnits,
-    screws: (restockTotals['Screws (sets)'] || 0) - totalManufacturedUnits,
-    inserts: (restockTotals['Inserts (sets)'] || 0) - totalManufacturedUnits,
-    washers: (restockTotals['Washers (sets)'] || 0) - totalManufacturedUnits,
-  }), [restockTotals, totalManufacturedUnits, cogs]);
-
-  const buildableUnits = useMemo(() => Math.floor(Math.min(
-    cogs.blackGramsUsed > 0 ? Math.max(0, currentStock.blackPetg / cogs.blackGramsUsed) : Infinity,
-    cogs.whiteGramsUsed > 0 ? Math.max(0, currentStock.whitePetg / cogs.whiteGramsUsed) : Infinity,
-    cogs.lbsUsed > 0 ? Math.max(0, currentStock.concrete / cogs.lbsUsed) : Infinity,
-    Math.max(0, currentStock.boxes), Math.max(0, currentStock.wrap), Math.max(0, currentStock.screws), Math.max(0, currentStock.inserts), Math.max(0, currentStock.washers)
-  )), [currentStock, cogs]);
-
-  const runoutDays = useMemo(() => ({
-    blackPetg: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.blackPetg / (cogs.blackGramsUsed || 1)) / dailySalesVelocity)) : Infinity,
-    whitePetg: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.whitePetg / (cogs.whiteGramsUsed || 1)) / dailySalesVelocity)) : Infinity,
-    concrete: dailySalesVelocity > 0 ? Math.max(0, Math.floor((currentStock.concrete / (cogs.lbsUsed || 1)) / dailySalesVelocity)) : Infinity,
-    boxes: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.boxes / dailySalesVelocity)) : Infinity,
-    wrap: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.wrap / dailySalesVelocity)) : Infinity,
-    screws: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.screws / dailySalesVelocity)) : Infinity,
-    inserts: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.inserts / dailySalesVelocity)) : Infinity,
-    washers: dailySalesVelocity > 0 ? Math.max(0, Math.floor(currentStock.washers / dailySalesVelocity)) : Infinity,
-  }), [dailySalesVelocity, currentStock, cogs]);
-
-  const lowStockAlerts = useMemo(() => {
-    if (dailySalesVelocity === 0) return [];
-    const alerts = [];
-    if (runoutDays.blackPetg <= 7) alerts.push({ name: 'Black PETG', days: runoutDays.blackPetg });
-    if (runoutDays.whitePetg <= 7) alerts.push({ name: 'White PETG', days: runoutDays.whitePetg });
-    if (runoutDays.concrete <= 7) alerts.push({ name: 'Concrete', days: runoutDays.concrete });
-    if (runoutDays.boxes <= 7) alerts.push({ name: 'Boxes', days: runoutDays.boxes });
-    if (runoutDays.wrap <= 7) alerts.push({ name: 'Bubble Wrap', days: runoutDays.wrap });
-    if (runoutDays.screws <= 7) alerts.push({ name: 'Screws', days: runoutDays.screws });
-    if (runoutDays.inserts <= 7) alerts.push({ name: 'Inserts', days: runoutDays.inserts });
-    if (runoutDays.washers <= 7) alerts.push({ name: 'Washers', days: runoutDays.washers });
-    return alerts;
-  }, [runoutDays, dailySalesVelocity]);
-
-  // --- FLEET MAINTENANCE ENGINE ---
   const lifetimeHoursPerMachine = Math.floor(totalUnitsSold / Math.max(1, machines.length)) * 3.5;
 
   const maintenanceAlerts = useMemo(() => {
@@ -486,30 +515,33 @@ export default function App() {
     </button>
   );
 
-  // Calculate pending orders for the live notification badge
   const pendingOrderCount = useMemo(() => {
     const fiveDaysAgo = new Date();
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
     const cutoff = fiveDaysAgo.toISOString().split('T')[0];
-    return revenues.filter(r => {
-      if (r.fulfillmentStatus && r.fulfillmentStatus !== 'shipped') return true;
-      if (!r.fulfillmentStatus && r.date >= cutoff && Number(r.qty) > 0) return true;
-      return false;
-    }).length;
+    return revenues.filter(r => r.fulfillmentStatus !== 'shipped' && Number(r.qty) > 0 && (r.date >= cutoff || r.fulfillmentStatus)).length;
   }, [revenues]);
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-zinc-900 font-sans antialiased print-bg-white selection:bg-zinc-200 relative overflow-hidden">
       
+      {/* GLOBAL TOAST NOTIFICATIONS */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 transform -translate-x-1/2 px-6 py-3.5 rounded-full shadow-2xl z-50 animate-in slide-in-from-bottom-5 font-bold text-sm flex items-center space-x-2 ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-zinc-900 text-white border border-zinc-700'}`}>
+          {toast.type === 'error' ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} className="text-emerald-400" />}
+          <span>{toast.msg}</span>
+        </div>
+      )}
+
       {/* Ambient Blurred Backgrounds */}
       <div className="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none no-print">
         <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vh] rounded-full bg-blue-400/5 blur-[100px]"></div>
         <div className="absolute bottom-[-10%] right-[-5%] w-[40vw] h-[60vh] rounded-full bg-emerald-400/5 blur-[100px]"></div>
       </div>
 
-      {quickAction === 'revenue' && <QuickRevenueModal onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('revenues', d); setQuickAction(null); }} />}
-      {quickAction === 'expense' && <QuickExpenseModal uploadReceipt={uploadReceipt} onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('expenses', d); setQuickAction(null); }} />}
-      {quickAction === 'equity' && <QuickEquityModal onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('equities', d); setQuickAction(null); }} />}
+      {quickAction === 'revenue' && <QuickRevenueModal onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('revenues', d); setQuickAction(null); showToast("Sale logged successfully!"); }} />}
+      {quickAction === 'expense' && <QuickExpenseModal uploadReceipt={uploadReceipt} onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('expenses', d); setQuickAction(null); showToast("Expense logged to Vault!"); }} showToast={showToast} />}
+      {quickAction === 'equity' && <QuickEquityModal onClose={() => setQuickAction(null)} onAdd={(d) => { handleAdd('equities', d); setQuickAction(null); showToast("Equity transfer recorded!"); }} />}
 
       <header className="bg-white/70 backdrop-blur-xl border-b border-zinc-200/60 sticky top-0 z-30 no-print transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2">
@@ -637,7 +669,7 @@ export default function App() {
                   </div>
 
                   <div className="col-span-1 md:col-span-2 lg:col-span-3">
-                    <ProgressCard drawsRecoup={drawsRecoup} initialGoal={initialGoal} remainingToRecoup={remainingToRecoup} formatCurrency={formatCurrency} onUpdateGoal={(newGoal) => handleUpdateSettings({ ...appSettings, initialInvestment: newGoal })} />
+                    <ProgressCard drawsRecoup={drawsRecoup} initialGoal={initialGoal} remainingToRecoup={remainingToRecoup} formatCurrency={formatCurrency} onUpdateGoal={(newGoal) => { handleUpdateSettings({ ...appSettings, initialInvestment: newGoal }); showToast("Initial Investment Goal updated."); }} />
                   </div>
 
                 </div>
@@ -645,14 +677,14 @@ export default function App() {
             )}
 
             {activeTab === 'analytics' && <Analytics revenues={revenues} expenses={expenses} formatCurrency={formatCurrency} totalTrueProfit={totalTrueProfit} totalUnitsSold={totalUnitsSold} />}
-            {activeTab === 'production' && <ProductionBoard revenues={revenues} appSettings={appSettings} handleUpdateSettings={handleUpdateSettings} handleUpdateRecord={handleUpdateRecord} buildableUnits={buildableUnits} />}
-            {activeTab === 'warehouse' && <Warehouse restocks={restocks} currentStock={currentStock} buildableUnits={buildableUnits} runoutDays={runoutDays} dailySalesVelocity={dailySalesVelocity} onAdd={(data) => handleAdd('restocks', data)} onDelete={(id) => handleDelete('restocks', id)} formatCurrency={formatCurrency} cogs={cogs} />}
-            {activeTab === 'fleet' && <FleetCommand machines={machines} totalTrueProfit={totalTrueProfit} totalUnitsSold={totalUnitsSold} onAdd={(data) => handleAdd('machines', data)} onDelete={(id) => handleDelete('machines', id)} onUpdate={handleUpdateRecord} formatCurrency={formatCurrency} />}
-            {activeTab === 'revenue' && <RevenueLog revenues={revenues} costPerTrainer={costPerTrainer} onAdd={(data) => handleAdd('revenues', data)} onUpdate={(id, data) => handleUpdateRecord('revenues', id, data)} onDelete={(id) => handleDelete('revenues', id)} formatCurrency={formatCurrency} />}
-            {activeTab === 'expenses' && <ExpenseTracker uploadReceipt={uploadReceipt} expenses={expenses} onAdd={(data) => handleAdd('expenses', data)} onUpdate={(id, data) => handleUpdateRecord('expenses', id, data)} onDelete={(id) => handleDelete('expenses', id)} formatCurrency={formatCurrency} />}
-            {activeTab === 'equity' && <OwnerEquity equities={equities} initialGoal={initialGoal} onAdd={(data) => handleAdd('equities', data)} onUpdate={(id, data) => handleUpdateRecord('equities', id, data)} onDelete={(id) => handleDelete('equities', id)} formatCurrency={formatCurrency} />}
-            {activeTab === 'mileage' && <MileageLog mileages={mileages} onAdd={(data) => handleAdd('mileages', data)} onUpdate={(id, data) => handleUpdateRecord('mileages', id, data)} onDelete={(id) => handleDelete('mileages', id)} formatCurrency={formatCurrency} />}
-            {activeTab === 'cogs' && <Manufacturing cogs={cogs} onUpdate={handleUpdateCogs} costPerTrainer={costPerTrainer} blackPetgCostPerGram={blackPetgCostPerGram} whitePetgCostPerGram={whitePetgCostPerGram} formatCurrency={formatCurrency} />}
+            {activeTab === 'production' && <ProductionBoard activeOrders={activeOrders} printJobs={printJobs} appSettings={appSettings} handleUpdateSettings={handleUpdateSettings} handleUpdateRecord={handleUpdateRecord} handleAdd={handleAdd} handleDelete={handleDelete} showToast={showToast} />}
+            {activeTab === 'warehouse' && <Warehouse restocks={restocks} currentStock={currentStock} buildableUnits={buildableUnits} runoutDays={runoutDays} dailySalesVelocity={dailySalesVelocity} onAdd={(data) => handleAdd('restocks', data)} onDelete={(id) => handleDelete('restocks', id)} formatCurrency={formatCurrency} cogs={cogs} showToast={showToast} />}
+            {activeTab === 'fleet' && <FleetCommand machines={machines} totalTrueProfit={totalTrueProfit} totalUnitsSold={totalUnitsSold} onAdd={(data) => { handleAdd('machines', data); showToast("Printer added successfully!"); }} onDelete={(id) => handleDelete('machines', id)} onUpdate={handleUpdateRecord} formatCurrency={formatCurrency} showToast={showToast} />}
+            {activeTab === 'revenue' && <RevenueLog revenues={revenues} costPerTrainer={costPerTrainer} onAdd={(data) => { handleAdd('revenues', data); showToast("Sale logged successfully!"); }} onUpdate={(id, data) => { handleUpdateRecord('revenues', id, data); showToast("Record updated."); }} onDelete={(id) => { handleDelete('revenues', id); showToast("Record deleted."); }} formatCurrency={formatCurrency} showToast={showToast} />}
+            {activeTab === 'expenses' && <ExpenseTracker uploadReceipt={uploadReceipt} expenses={expenses} onAdd={(data) => { handleAdd('expenses', data); showToast("Expense securely vaulted."); }} onUpdate={(id, data) => handleUpdateRecord('expenses', id, data)} onDelete={(id) => handleDelete('expenses', id)} formatCurrency={formatCurrency} showToast={showToast} />}
+            {activeTab === 'equity' && <OwnerEquity equities={equities} initialGoal={initialGoal} onAdd={(data) => { handleAdd('equities', data); showToast("Transfer recorded."); }} onUpdate={(id, data) => handleUpdateRecord('equities', id, data)} onDelete={(id) => handleDelete('equities', id)} formatCurrency={formatCurrency} showToast={showToast} />}
+            {activeTab === 'mileage' && <MileageLog mileages={mileages} onAdd={(data) => { handleAdd('mileages', data); showToast("Miles logged."); }} onUpdate={(id, data) => handleUpdateRecord('mileages', id, data)} onDelete={(id) => handleDelete('mileages', id)} formatCurrency={formatCurrency} showToast={showToast} />}
+            {activeTab === 'cogs' && <Manufacturing cogs={cogs} onUpdate={(newCogs) => { handleUpdateCogs(newCogs); showToast("COGS successfully updated."); }} costPerTrainer={costPerTrainer} blackPetgCostPerGram={blackPetgCostPerGram} whitePetgCostPerGram={whitePetgCostPerGram} formatCurrency={formatCurrency} />}
             {activeTab === 'tax' && <TaxSummary revenues={revenues} expenses={expenses} mileages={mileages} formatCurrency={formatCurrency} />}
           </>
         )}
@@ -711,256 +743,47 @@ function QuickRevenueModal({ onClose, onAdd }) {
   );
 }
 
-function ProductionBoard({ revenues, appSettings, handleUpdateSettings, handleUpdateRecord, buildableUnits }) {
-  const finishedBuffer = Number(appSettings.finishedBuffer || 0);
-  const targetBuffer = Number(appSettings.targetBuffer || 6);
-
-  // Auto-clean old records so they don't clog the board if you just uploaded a giant historical CSV
-  const activeOrders = useMemo(() => {
-    const fiveDaysAgo = new Date();
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-    const cutoff = fiveDaysAgo.toISOString().split('T')[0];
-
-    return revenues.filter(r => {
-      // If it explicitly has a status and isn't shipped, keep it
-      if (r.fulfillmentStatus && r.fulfillmentStatus !== 'shipped') return true;
-      // If it doesn't have a status but is brand new, put it on the board
-      if (!r.fulfillmentStatus && r.date >= cutoff && Number(r.qty) > 0) return true;
-      return false;
-    }).sort((a, b) => new Date(a.date) - new Date(b.date)); // Oldest first
-  }, [revenues]);
-
-  const updateStatus = (id, newStatus) => {
-    handleUpdateRecord('revenues', id, { fulfillmentStatus: newStatus });
-  };
-
-  const pullFromBuffer = (order) => {
-    if (finishedBuffer >= Number(order.qty || 1)) {
-      handleUpdateSettings({ ...appSettings, finishedBuffer: finishedBuffer - Number(order.qty || 1) });
-      updateStatus(order.id, 'shipped');
-    } else {
-      alert("Not enough fully assembled units in the safety buffer!");
-    }
-  };
-
-  const adjustBuffer = (amount) => {
-    const newTotal = Math.max(0, finishedBuffer + amount);
-    if (amount > 0 && buildableUnits < amount) {
-      alert("Not enough raw materials in the Warehouse to print this!");
-      return;
-    }
-    handleUpdateSettings({ ...appSettings, finishedBuffer: newTotal });
-  };
-
-  const getUrgency = (dateStr) => {
-    const orderDate = new Date(dateStr);
-    const diffHours = Math.floor((new Date() - orderDate) / (1000 * 60 * 60));
-    const hoursLeft = 72 - diffHours;
-    
-    if (hoursLeft < 0) return { text: `${Math.abs(hoursLeft)}h OVERDUE`, color: 'text-rose-700 bg-rose-100 border-rose-300 shadow-[0_0_10px_rgba(225,29,72,0.4)] animate-pulse' };
-    if (hoursLeft <= 24) return { text: `${hoursLeft}h LEFT`, color: 'text-amber-700 bg-amber-100 border-amber-300' };
-    return { text: `${hoursLeft}h left`, color: 'text-blue-700 bg-blue-100 border-blue-200' };
-  };
-
-  const OrderCard = ({ order, status }) => {
-    const urgency = getUrgency(order.date);
-    const isOverdue = urgency.text.includes('OVERDUE');
-    return (
-      <div className={`bg-white rounded-2xl border p-4 shadow-sm hover:shadow-md transition-all group ${isOverdue ? 'border-rose-200' : 'border-zinc-200'}`}>
-        <div className="flex justify-between items-start mb-3">
-          <div>
-            <div className="font-bold text-sm text-zinc-900 line-clamp-1">{order.desc}</div>
-            <div className="text-[10px] font-mono text-zinc-500 mt-0.5">{order.orderNum || 'Manual Sale'} • Qty: {order.qty}</div>
-          </div>
-          <div className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border ${urgency.color} whitespace-nowrap ml-2`}>
-            {urgency.text}
-          </div>
-        </div>
-        
-        <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-zinc-100">
-          {(!status || status === 'new') && (
-            <>
-              {finishedBuffer >= Number(order.qty || 1) && (
-                <button onClick={() => pullFromBuffer(order)} className="w-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center">
-                  <PackageOpen size={14} className="mr-1.5" /> Pull from Buffer
-                </button>
-              )}
-              <button onClick={() => updateStatus(order.id, 'printing')} className="w-full bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center">
-                <Play size={14} className="mr-1.5" /> Start Printing
-              </button>
-            </>
-          )}
-          {status === 'printing' && (
-            <button onClick={() => updateStatus(order.id, 'ready')} className="w-full bg-blue-100 hover:bg-blue-200 text-blue-800 text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center">
-              <CheckCircle2 size={14} className="mr-1.5" /> Finish & Assemble
-            </button>
-          )}
-          {status === 'ready' && (
-            <button onClick={() => updateStatus(order.id, 'shipped')} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center shadow-sm">
-              <ArrowRight size={14} className="mr-1.5" /> Mark Shipped
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const newOrders = activeOrders.filter(r => !r.fulfillmentStatus || r.fulfillmentStatus === 'new');
-  const printingOrders = activeOrders.filter(r => r.fulfillmentStatus === 'printing');
-  const readyOrders = activeOrders.filter(r => r.fulfillmentStatus === 'ready');
+function ProgressCard({ drawsRecoup, initialGoal, remainingToRecoup, formatCurrency, onUpdateGoal }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [tempGoal, setTempGoal] = useState(initialGoal);
+  const handleSave = () => { onUpdateGoal(Number(tempGoal)); setIsEditing(false); };
+  const percentComplete = initialGoal > 0 ? Math.min(100, (drawsRecoup / initialGoal) * 100) : 100;
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      {/* THE SAFETY BUFFER */}
-      <div className={`rounded-3xl border p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between shadow-lg transition-all duration-500 ${activeOrders.length > 0 ? 'bg-zinc-900 text-white border-zinc-800' : (finishedBuffer >= targetBuffer ? 'bg-emerald-50 border-emerald-200' : 'bg-blue-50 border-blue-200')}`}>
-        <div className="flex items-center mb-4 sm:mb-0">
-          <div className={`p-4 rounded-full mr-5 ${activeOrders.length > 0 ? 'bg-zinc-800 text-zinc-300' : (finishedBuffer >= targetBuffer ? 'bg-emerald-200 text-emerald-700' : 'bg-blue-200 text-blue-700')}`}>
-            <ShieldCheck size={32} />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold tracking-tight">The Safety Buffer</h2>
-            <p className={`text-sm font-medium mt-1 ${activeOrders.length > 0 ? 'text-zinc-400' : 'text-zinc-600'}`}>
-              {activeOrders.length > 0 
-                ? `${activeOrders.length} active orders pending. Fulfill these before printing for stock.` 
-                : (finishedBuffer >= targetBuffer 
-                  ? `Buffer is full. Your 72-hour window is completely secured.` 
-                  : `Printers are idle. Print ${targetBuffer - finishedBuffer} more units to secure your weekend.`)}
-            </p>
-          </div>
-        </div>
-        
-        <div className="flex items-center space-x-6 bg-white/10 p-3 rounded-2xl backdrop-blur-sm border border-black/5">
-          <div className="flex flex-col items-center">
-            <span className={`text-[10px] font-bold uppercase tracking-widest mb-2 ${activeOrders.length > 0 ? 'text-zinc-400' : 'text-zinc-500'}`}>Target</span>
-            <div className="flex items-center space-x-2">
-              <button onClick={() => handleUpdateSettings({...appSettings, targetBuffer: Math.max(0, targetBuffer - 1)})} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>-</button>
-              <span className={`text-2xl font-bold w-8 text-center ${activeOrders.length > 0 ? 'text-white' : 'text-zinc-900'}`}>{targetBuffer}</span>
-              <button onClick={() => handleUpdateSettings({...appSettings, targetBuffer: targetBuffer + 1})} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>+</button>
-            </div>
-          </div>
-          <div className={`w-px h-12 ${activeOrders.length > 0 ? 'bg-zinc-700' : 'bg-zinc-200'}`}></div>
-          <div className="flex flex-col items-center">
-            <span className={`text-[10px] font-bold uppercase tracking-widest mb-2 ${activeOrders.length > 0 ? 'text-zinc-400' : 'text-zinc-500'}`}>On Shelf</span>
-            <div className="flex items-center space-x-2">
-              <button onClick={() => adjustBuffer(-1)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>-</button>
-              <span className={`text-2xl font-bold w-8 text-center ${activeOrders.length > 0 ? 'text-white' : 'text-zinc-900'}`}>{finishedBuffer}</span>
-              <button onClick={() => adjustBuffer(1)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>+</button>
-            </div>
-          </div>
-        </div>
+    <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center relative group hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all">
+      <div className="absolute top-6 right-6">
+        {!isEditing && <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-zinc-900 transition-colors p-1 opacity-0 group-hover:opacity-100" title="Edit Initial Goal"><Edit2 size={16} /></button>}
       </div>
-
-      {/* FULFILLMENT KANBAN */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
-        {/* Column 1: To Print */}
-        <div className="bg-zinc-50/80 backdrop-blur-sm rounded-3xl border border-zinc-200/60 p-5 flex flex-col h-full">
-          <div className="flex justify-between items-center mb-5 px-1">
-            <h3 className="font-bold text-zinc-900 flex items-center"><Inbox size={16} className="mr-2 text-zinc-400"/> To Print</h3>
-            <span className="bg-zinc-200 text-zinc-700 text-xs font-bold px-2.5 py-1 rounded-full">{newOrders.length}</span>
-          </div>
-          <div className="flex-1 space-y-4">
-            {newOrders.map(order => <OrderCard key={order.id} order={order} status="new" />)}
-            {newOrders.length === 0 && <div className="text-center py-10 text-zinc-400 text-sm font-medium border-2 border-dashed border-zinc-200 rounded-2xl">No pending orders.</div>}
-          </div>
-        </div>
-
-        {/* Column 2: Printing */}
-        <div className="bg-blue-50/50 backdrop-blur-sm rounded-3xl border border-blue-100/60 p-5 flex flex-col h-full">
-          <div className="flex justify-between items-center mb-5 px-1">
-            <h3 className="font-bold text-blue-900 flex items-center"><Settings size={16} className="mr-2 text-blue-500 animate-[spin_4s_linear_infinite]"/> Printing</h3>
-            <span className="bg-blue-200 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">{printingOrders.length}</span>
-          </div>
-          <div className="flex-1 space-y-4">
-            {printingOrders.map(order => <OrderCard key={order.id} order={order} status="printing" />)}
-            {printingOrders.length === 0 && <div className="text-center py-10 text-blue-300 text-sm font-medium border-2 border-dashed border-blue-100 rounded-2xl">Printers are idle.</div>}
-          </div>
-        </div>
-
-        {/* Column 3: Ready to Ship */}
-        <div className="bg-emerald-50/50 backdrop-blur-sm rounded-3xl border border-emerald-100/60 p-5 flex flex-col h-full">
-          <div className="flex justify-between items-center mb-5 px-1">
-            <h3 className="font-bold text-emerald-900 flex items-center"><Package size={16} className="mr-2 text-emerald-500"/> Assembly / Pack</h3>
-            <span className="bg-emerald-200 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">{readyOrders.length}</span>
-          </div>
-          <div className="flex-1 space-y-4">
-            {readyOrders.map(order => <OrderCard key={order.id} order={order} status="ready" />)}
-            {readyOrders.length === 0 && <div className="text-center py-10 text-emerald-300 text-sm font-medium border-2 border-dashed border-emerald-100 rounded-2xl">Nothing waiting to pack.</div>}
-          </div>
-        </div>
-
+      <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Remaining to Recoup</h3>
+      <div className="text-3xl sm:text-4xl font-bold tracking-tighter text-zinc-900 mb-2">
+        <AnimatedNumber value={remainingToRecoup} formatCurrency={formatCurrency} />
       </div>
+      <div className="w-full bg-zinc-100 rounded-full h-1.5 mt-5 overflow-hidden"><div className="bg-zinc-900 h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${percentComplete}%` }}></div></div>
+      {isEditing ? (
+        <div className="flex items-center space-x-3 mt-5 bg-zinc-50 p-2 rounded-xl border border-zinc-200">
+          <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest ml-2">Goal $</span>
+          <input type="number" className="border-none bg-transparent w-24 text-sm font-semibold outline-none text-zinc-900" value={tempGoal} onChange={(e) => setTempGoal(e.target.value)} />
+          <button onClick={handleSave} className="bg-zinc-900 text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"><Check size={14} /></button>
+        </div>
+      ) : <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-400 mt-4">{percentComplete.toFixed(0)}% to {formatCurrency(initialGoal)} goal</p>}
     </div>
   );
 }
 
-function QuickExpenseModal({ onClose, onAdd, uploadReceipt }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Supplies', amount: '' });
-  const [file, setFile] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const categories = ['Supplies', 'Advertising', 'Travel', 'Equipment', 'Office'];
-  
-  const handleSubmit = async (e) => { 
-    e.preventDefault(); 
-    if(!formData.amount) return; 
-    setIsUploading(true);
-    let receiptUrl = '';
-    if (file) { receiptUrl = await uploadReceipt(file) || ''; }
-    onAdd({ ...formData, receiptUrl });
-    setIsUploading(false);
-  };
-
+function DashboardCard({ title, amount, subtitle, color, isNegative, highlight, formatCurrency }) {
+  const colorMap = { blue: 'text-blue-600', red: 'text-zinc-900', emerald: 'text-emerald-600', zinc: 'text-zinc-900', indigo: 'text-zinc-900' };
   return (
-    <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
-          <h2 className="text-lg font-bold tracking-tight text-zinc-900">Log Expense</h2>
-          <button onClick={onClose} disabled={isUploading} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2.5 rounded-full"><X size={18}/></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-            <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
-          </div>
-          <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl">
-            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Attach Receipt</label>
-            <input type="file" accept="image/*,application/pdf" onChange={e=>setFile(e.target.files[0])} className="w-full text-sm font-medium text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:uppercase file:tracking-wider file:bg-zinc-200 file:text-zinc-700 hover:file:bg-zinc-300 transition-colors cursor-pointer" />
-          </div>
-          <button type="submit" disabled={isUploading} className="w-full bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-400 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)] hover:-translate-y-0.5 flex justify-center items-center">
-            {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Receipt...</> : "Save Expense"}
-          </button>
-        </form>
+    <div className={`bg-white/80 backdrop-blur-md rounded-3xl p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${highlight ? 'ring-1 ring-zinc-200/60' : 'border border-zinc-100'}`}>
+      <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{title}</h3>
+      <div className={`text-3xl sm:text-4xl font-bold tracking-tighter mt-3 ${colorMap[color] || 'text-zinc-900'}`}>
+        {isNegative && amount > 0 ? '-' : ''}
+        <AnimatedNumber value={amount} formatCurrency={formatCurrency} />
       </div>
+      <p className="text-sm font-medium text-zinc-400 mt-2">{subtitle}</p>
     </div>
   );
 }
 
-function QuickEquityModal({ onClose, onAdd }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Amex Transfer (Op Cash)', amount: '' });
-  const categories = ['Recoup Investment', 'Golf Fund', 'Amex Transfer (Op Cash)', 'Other Draw'];
-  const handleSubmit = (e) => { e.preventDefault(); if(formData.amount) onAdd(formData); };
-  return (
-    <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
-          <h2 className="text-lg font-bold tracking-tight text-zinc-900">Transfer Funds</h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2.5 rounded-full"><X size={18}/></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
-          <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)] hover:-translate-y-0.5">Log Transfer</button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// --- US TILE MAP DATA ---
 const tileMapData = [
   { code: 'AK', c: 0, r: 0 }, { code: 'ME', c: 11, r: 0 },
   { code: 'WA', c: 1, r: 1 }, { code: 'ID', c: 2, r: 1 }, { code: 'MT', c: 3, r: 1 }, { code: 'ND', c: 4, r: 1 }, { code: 'MN', c: 5, r: 1 }, { code: 'WI', c: 6, r: 1 }, { code: 'MI', c: 7, r: 1 }, { code: 'NY', c: 9, r: 1 }, { code: 'VT', c: 10, r: 1 }, { code: 'NH', c: 11, r: 1 },
@@ -1327,298 +1150,305 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
   );
 }
 
-function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySalesVelocity, onAdd, onDelete, formatCurrency, cogs }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], material: 'Black PETG (grams)', qty: '' });
-  const materials = ['Black PETG (grams)', 'White PETG (grams)', 'Concrete (lbs)', 'Boxes (qty)', 'Bubble Wrap (qty)', 'Screws (sets)', 'Inserts (sets)', 'Washers (sets)'];
-  const { items: sortedRestocks, requestSort, sortConfig } = useSortableData(restocks);
+function ProductionBoard({ activeOrders, printJobs, appSettings, handleUpdateSettings, handleUpdateRecord, handleAdd, handleDelete, showToast }) {
+  const baseBuffer = Number(appSettings.baseBuffer || 0);
+  const targetBases = Number(appSettings.targetBases || 6);
+  const coverBuffer = Number(appSettings.coverBuffer || 0);
+  const targetCovers = Number(appSettings.targetCovers || 6);
 
-  const addRow = (e) => { e.preventDefault(); if (!formData.qty) return; onAdd(formData); setFormData({ ...formData, qty: '' }); };
+  const [jobForm, setJobForm] = useState({ part: 'Base', assignedTo: 'buffer', qty: 1 });
 
-  const handleStockAdjustment = (materialName, diff) => {
-    onAdd({
-      date: new Date().toISOString().split('T')[0],
-      material: materialName,
-      qty: diff,
-      type: 'Audit' // Special flag so we know this wasn't a standard purchase
-    });
+  const adjustBuffer = (type, diff) => {
+     const current = type === 'base' ? baseBuffer : coverBuffer;
+     handleUpdateSettings({ ...appSettings, [type === 'base' ? 'baseBuffer' : 'coverBuffer']: Math.max(0, current + diff) });
+  };
+  const adjustTarget = (type, diff) => {
+     const current = type === 'base' ? targetBases : targetCovers;
+     handleUpdateSettings({ ...appSettings, [type === 'base' ? 'targetBases' : 'targetCovers']: Math.max(0, current + diff) });
   };
 
-  const StockCard = ({ title, materialName, amount, unit, isWarning, daysRemaining, velocity, onAdjust }) => {
-    const cleanAmount = Number.isInteger(amount) ? amount : Number(Number(amount).toFixed(2));
-    const [isEditing, setIsEditing] = useState(false);
-    const [editVal, setEditVal] = useState(cleanAmount);
+  const handleCreateJobs = (e) => {
+    e.preventDefault();
+    const qty = Number(jobForm.qty || 1);
+    for(let i=0; i<qty; i++) {
+      handleAdd('printJobs', {
+        part: jobForm.part,
+        assignedTo: jobForm.assignedTo,
+        status: 'queued',
+        createdAt: new Date().toISOString()
+      });
+    }
+    setJobForm({...jobForm, qty: 1});
+    if(showToast) showToast(`Queued ${qty}x ${jobForm.part} for production.`);
+  };
 
-    useEffect(() => {
-      if (!isEditing) setEditVal(Number.isInteger(amount) ? amount : Number(Number(amount).toFixed(2)));
-    }, [amount, isEditing]);
+  const handleJobAction = (job, newStatus) => {
+    if (newStatus === 'ready' && job.assignedTo === 'buffer') {
+      const isBase = job.part === 'Base';
+      handleUpdateSettings({
+        ...appSettings,
+        [isBase ? 'baseBuffer' : 'coverBuffer']: (isBase ? baseBuffer : coverBuffer) + 1
+      });
+      handleDelete('printJobs', job.id);
+      if(showToast) showToast(`${job.part} finished and added to Safety Buffer!`);
+    } else {
+      handleUpdateRecord('printJobs', job.id, { status: newStatus });
+    }
+  };
 
-    const handleSave = () => {
-      const diff = Number(editVal) - cleanAmount;
-      if (diff !== 0) {
-        onAdjust(materialName, diff);
-      }
-      setIsEditing(false);
-    };
+  const handleShipOrder = (order, missingBases, missingCovers) => {
+    handleUpdateSettings({
+      ...appSettings,
+      baseBuffer: Math.max(0, baseBuffer - missingBases),
+      coverBuffer: Math.max(0, coverBuffer - missingCovers)
+    });
+    handleUpdateRecord('revenues', order.id, { fulfillmentStatus: 'shipped' });
+
+    const orderJobs = printJobs.filter(j => j.assignedTo === order.id);
+    orderJobs.forEach(j => handleDelete('printJobs', j.id));
+    
+    if(showToast) showToast(`Order fulfilled and shipped!`);
+  };
+
+  const queuedJobs = printJobs.filter(j => j.status === 'queued');
+  const printingJobs = printJobs.filter(j => j.status === 'printing');
+  const readyJobs = printJobs.filter(j => j.status === 'ready');
+
+  const JobCard = ({ job }) => {
+    const isBase = job.part === 'Base';
+    const assignedText = job.assignedTo === 'buffer' ? 'Safety Buffer (Stock)' : (activeOrders.find(o => o.id === job.assignedTo)?.desc || 'Unknown Order');
+    const orderBadge = job.assignedTo !== 'buffer' && activeOrders.find(o => o.id === job.assignedTo)?.orderNum;
 
     return (
-      <div className={`rounded-3xl border p-6 flex flex-col justify-center transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] group ${isWarning ? 'bg-amber-50/50 border-amber-200/60' : 'bg-white/80 backdrop-blur-md border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]'}`}>
-        <div className="flex justify-between items-start">
-          <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center">
-            {title} {isWarning && <AlertTriangle size={14} className="text-amber-500 ml-1" />}
-          </h3>
-          {!isEditing && (
-            <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" title="Audit/Adjust Inventory">
-              <Edit2 size={14} />
-            </button>
-          )}
-        </div>
-        
-        {isEditing ? (
-          <div className="mt-3 flex items-center space-x-2 animate-in fade-in zoom-in-95">
-            <input type="number" step="any" className="w-20 sm:w-24 border border-zinc-300 rounded-lg px-2 py-1.5 text-lg font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white" value={editVal} onChange={e => setEditVal(e.target.value)} autoFocus />
-            <button onClick={handleSave} className="bg-emerald-600 text-white p-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"><Check size={16} /></button>
-            <button onClick={() => setIsEditing(false)} className="bg-zinc-100 text-zinc-500 p-2 rounded-lg hover:bg-zinc-200 transition-colors"><X size={16} /></button>
-          </div>
-        ) : (
-          <div className={`text-3xl font-bold tracking-tighter mt-3 ${isWarning ? 'text-amber-700' : 'text-zinc-900'}`}>
-            {cleanAmount.toLocaleString()} <span className="text-sm font-medium tracking-normal text-zinc-400 ml-1">{unit}</span>
-          </div>
-        )}
-
-        {velocity > 0 && !isEditing && (
-          <div className={`text-[11px] mt-3 font-bold uppercase tracking-wider ${daysRemaining <= 7 ? 'text-amber-600' : 'text-zinc-400'}`}>
-            {daysRemaining > 0 && daysRemaining !== Infinity ? `~${daysRemaining} days remaining` : (daysRemaining === 0 ? 'Out of stock' : 'Adequate supply')}
-          </div>
-        )}
+      <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-sm group relative hover:shadow-md transition-all">
+         <div className="flex justify-between items-start mb-3">
+            <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded border ${isBase ? 'bg-zinc-100 text-zinc-700 border-zinc-200' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
+              {job.part}
+            </span>
+            <button onClick={() => { handleDelete('printJobs', job.id); if(showToast) showToast("Print job deleted."); }} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><X size={14}/></button>
+         </div>
+         
+         <div className="font-semibold text-sm text-zinc-900 line-clamp-2 leading-snug">{assignedText}</div>
+         {orderBadge && <div className="text-[10px] font-mono text-zinc-500 mt-1">{orderBadge}</div>}
+         
+         <div className="mt-4 pt-3 border-t border-zinc-100 flex gap-2">
+            {job.status === 'queued' && (
+              <button onClick={() => handleJobAction(job, 'printing')} className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] py-2 rounded-lg font-bold transition-all shadow-sm flex items-center justify-center">
+                <Play size={12} className="mr-1.5"/> Start Print
+              </button>
+            )}
+            {job.status === 'printing' && (
+              <button onClick={() => handleJobAction(job, 'ready')} className="flex-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-[11px] py-2 rounded-lg font-bold transition-all flex items-center justify-center animate-pulse">
+                <CheckCircle2 size={12} className="mr-1.5"/> Finish Part
+              </button>
+            )}
+            {job.status === 'ready' && (
+              <span className="flex-1 text-center text-emerald-600 text-[11px] font-bold py-2 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-center">
+                <Check size={12} className="mr-1.5"/> Waiting to Ship
+              </span>
+            )}
+         </div>
       </div>
     );
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in">
-      <div className={`rounded-[2.5rem] p-10 flex flex-col sm:flex-row sm:items-center justify-between relative overflow-hidden transition-all duration-500 shadow-xl ${buildableUnits < 10 ? 'bg-amber-100 text-amber-900' : 'bg-white/90 backdrop-blur-md border border-zinc-200 text-zinc-900 shadow-[0_8px_30px_rgb(0,0,0,0.06)]'}`}>
-        <div className="absolute top-0 right-0 p-8 opacity-[0.03] text-zinc-900"><Package size={200} /></div>
-        <div className="z-10">
-          <h2 className="text-2xl font-bold tracking-tight">Production Capacity</h2>
-          <p className={`text-sm font-medium mt-2 ${buildableUnits < 10 ? 'text-amber-700' : 'text-zinc-500'}`}>Limited by lowest raw material</p>
+    <div className="space-y-6 animate-in fade-in pb-10">
+      
+      {/* 1. COMPONENT SAFETY BUFFERS */}
+      <div className="bg-zinc-900 rounded-[2.5rem] p-6 sm:p-10 shadow-lg flex flex-col lg:flex-row gap-8 justify-between items-center relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-8 opacity-[0.02] text-white"><ShieldCheck size={200} /></div>
+        
+        <div className="flex items-center z-10 w-full lg:w-auto">
+          <div className="p-4 bg-zinc-800 rounded-full mr-5 text-emerald-400">
+            <ShieldCheck size={36} />
+          </div>
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Component Buffers</h2>
+            <p className="text-sm font-medium mt-1 text-zinc-400">
+              Mix and match components to secure your 72-hour window.
+            </p>
+          </div>
         </div>
-        <div className="z-10 mt-6 sm:mt-0 text-left sm:text-right">
-          <div className={`text-7xl font-bold tracking-tighter ${buildableUnits < 10 ? '' : 'text-zinc-900'}`}><AnimatedNumber value={buildableUnits} isInt={true} /></div>
-          <div className={`text-[11px] font-bold uppercase tracking-widest mt-2 ${buildableUnits < 10 ? 'text-amber-700' : 'text-zinc-400'}`}>Buildable Units</div>
+        
+        <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto z-10">
+           {/* Base Buffer UI */}
+           <div className="flex-1 bg-white/10 backdrop-blur-md border border-white/5 p-4 rounded-2xl flex items-center justify-between min-w-[200px]">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-1">Base Stock</div>
+                <div className="flex items-end">
+                   <span className="text-3xl font-bold text-white">{baseBuffer}</span>
+                   <span className="text-sm text-zinc-500 font-medium mb-1 ml-1.5">/ {targetBases}</span>
+                   <div className="flex flex-col ml-2 mb-1">
+                     <button onClick={()=>adjustTarget('base', 1)} className="text-zinc-500 hover:text-zinc-300 transition-colors"><ChevronUp size={12}/></button>
+                     <button onClick={()=>adjustTarget('base', -1)} className="text-zinc-500 hover:text-zinc-300 transition-colors"><ChevronDown size={12}/></button>
+                   </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5 ml-4">
+                <button onClick={()=>adjustBuffer('base', 1)} className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-lg transition-colors"><Plus size={14}/></button>
+                <button onClick={()=>adjustBuffer('base', -1)} className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-lg transition-colors"><ChevronDown size={14}/></button>
+              </div>
+           </div>
+
+           {/* Cover Buffer UI */}
+           <div className="flex-1 bg-white/10 backdrop-blur-md border border-white/5 p-4 rounded-2xl flex items-center justify-between min-w-[200px]">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-1">Cover Stock</div>
+                <div className="flex items-end">
+                   <span className="text-3xl font-bold text-white">{coverBuffer}</span>
+                   <span className="text-sm text-zinc-500 font-medium mb-1 ml-1.5">/ {targetCovers}</span>
+                   <div className="flex flex-col ml-2 mb-1">
+                     <button onClick={()=>adjustTarget('cover', 1)} className="text-zinc-500 hover:text-zinc-300 transition-colors"><ChevronUp size={12}/></button>
+                     <button onClick={()=>adjustTarget('cover', -1)} className="text-zinc-500 hover:text-zinc-300 transition-colors"><ChevronDown size={12}/></button>
+                   </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5 ml-4">
+                <button onClick={()=>adjustBuffer('cover', 1)} className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-lg transition-colors"><Plus size={14}/></button>
+                <button onClick={()=>adjustBuffer('cover', -1)} className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-lg transition-colors"><ChevronDown size={14}/></button>
+              </div>
+           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-        <StockCard title="Black PETG" materialName="Black PETG (grams)" amount={currentStock.blackPetg} unit="g" isWarning={runoutDays.blackPetg <= 7} daysRemaining={runoutDays.blackPetg} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
-        <StockCard title="White PETG" materialName="White PETG (grams)" amount={currentStock.whitePetg} unit="g" isWarning={runoutDays.whitePetg <= 7} daysRemaining={runoutDays.whitePetg} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
-        <StockCard title="Concrete" materialName="Concrete (lbs)" amount={currentStock.concrete} unit="lbs" isWarning={runoutDays.concrete <= 7} daysRemaining={runoutDays.concrete} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
-        <StockCard title="Boxes" materialName="Boxes (qty)" amount={currentStock.boxes} unit="qty" isWarning={runoutDays.boxes <= 7} daysRemaining={runoutDays.boxes} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
-        <StockCard title="Bubble Wrap" materialName="Bubble Wrap (qty)" amount={currentStock.wrap} unit="qty" isWarning={runoutDays.wrap <= 7} daysRemaining={runoutDays.wrap} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
-        <StockCard title="Screws" materialName="Screws (sets)" amount={currentStock.screws} unit="sets" isWarning={runoutDays.screws <= 7} daysRemaining={runoutDays.screws} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
-        <StockCard title="Inserts" materialName="Inserts (sets)" amount={currentStock.inserts} unit="sets" isWarning={runoutDays.inserts <= 7} daysRemaining={runoutDays.inserts} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
-        <StockCard title="Washers" materialName="Washers (sets)" amount={currentStock.washers} unit="sets" isWarning={runoutDays.washers <= 7} daysRemaining={runoutDays.washers} velocity={dailySalesVelocity} onAdjust={handleStockAdjustment} />
+      {/* 2. ADD PRINT JOB */}
+      <div className="bg-white/80 backdrop-blur-md border border-zinc-200 p-4 rounded-2xl shadow-[0_2px_10px_-3px_rgba(0,0,0,0.03)] flex flex-col sm:flex-row gap-4 items-end z-20 relative">
+         <div className="flex-1 w-full">
+           <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5 ml-1">Component</label>
+           <select value={jobForm.part} onChange={e => setJobForm({...jobForm, part: e.target.value})} className={inlineInputStyle}>
+              <option value="Base">Base</option>
+              <option value="Cover">Cover</option>
+           </select>
+         </div>
+         <div className="flex-[2] w-full">
+           <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5 ml-1">Assign Job To</label>
+           <select value={jobForm.assignedTo} onChange={e => setJobForm({...jobForm, assignedTo: e.target.value})} className={inlineInputStyle}>
+              <option value="buffer">Safety Buffer (Stock)</option>
+              {activeOrders.map(o => <option key={o.id} value={o.id}>{o.desc} ({o.orderNum || 'Manual'}) - Qty: {o.qty}</option>)}
+           </select>
+         </div>
+         <div className="w-full sm:w-24">
+           <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5 ml-1">Print Qty</label>
+           <input type="number" min="1" value={jobForm.qty} onChange={e => setJobForm({...jobForm, qty: e.target.value})} className={inlineInputStyle} />
+         </div>
+         <button onClick={handleCreateJobs} className="w-full sm:w-auto bg-blue-600 text-white font-bold py-2.5 px-6 rounded-xl transition-all hover:bg-blue-700 hover:-translate-y-0.5 shadow-md flex items-center justify-center whitespace-nowrap">
+           <Plus size={16} className="mr-1.5"/> Queue Print
+         </button>
       </div>
 
-      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
-        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Material Restock</h2>
-        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-          <select className={`${inlineInputStyle} sm:col-span-2`} value={formData.material} onChange={e => setFormData({...formData, material: e.target.value})}>{materials.map(m => <option key={m} value={m}>{m}</option>)}</select>
-          <input type="number" placeholder="Quantity Added" className={inlineInputStyle} value={formData.qty} onChange={e => setFormData({...formData, qty: e.target.value})} required />
-          <button type="submit" className="sm:col-span-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 shadow-md"><Plus size={18} className="mr-2" /> Add to Warehouse</button>
-        </form>
-      </div>
-
-      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
-        <div className="p-6 border-b border-zinc-100"><h3 className="font-bold tracking-tight text-zinc-900">Restock History</h3></div>
-        <div className="overflow-x-auto">
+      {/* 3. PENDING ORDERS FOR FULFILLMENT */}
+      <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-sm overflow-hidden">
+        <h3 className="font-bold text-zinc-900 mb-6 text-lg flex items-center">
+          Pending Orders <span className="bg-zinc-100 text-zinc-600 text-xs px-2 py-0.5 rounded-full ml-3">{activeOrders.length}</span>
+        </h3>
+        <div className="overflow-x-auto hide-scrollbar">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="border-b border-zinc-100 bg-zinc-50/50">
+            <thead className="border-b border-zinc-100 text-zinc-500">
               <tr>
-                <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Material" sortKey="material" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Qty Added" sortKey="qty" currentSort={sortConfig} requestSort={requestSort} alignRight />
-                <th className="p-4"></th>
+                <th className="pb-4 font-semibold text-[11px] uppercase tracking-widest">Order</th>
+                <th className="pb-4 font-semibold text-[11px] uppercase tracking-widest text-center">Qty Required</th>
+                <th className="pb-4 font-semibold text-[11px] uppercase tracking-widest">Base Assignment</th>
+                <th className="pb-4 font-semibold text-[11px] uppercase tracking-widest">Cover Assignment</th>
+                <th className="pb-4 font-semibold text-[11px] uppercase tracking-widest text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-50">
-              {sortedRestocks.length === 0 ? (
-                <EmptyState icon={PackageOpen} title="Warehouse Empty" message="Log your first material restock to activate production capacity tracking." colSpan="4" />
-              ) : sortedRestocks.map(r => (
-                  <tr key={r.id} className="hover:bg-zinc-50/50 transition-colors group">
-                    <td className="px-6 py-4 font-medium text-zinc-500">{r.date}</td>
-                    <td className="px-6 py-4 font-semibold text-zinc-900">
-                      {r.type === 'Audit' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded mr-2 font-bold text-[9px] shadow-sm tracking-wider">AUDIT</span>}
-                      {r.material}
-                    </td>
-                    <td className={`px-6 py-4 text-right font-bold tracking-tight ${Number(r.qty) > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      {Number(r.qty) > 0 ? '+' : ''}{Number(r.qty).toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 text-right"><button onClick={() => onDelete(r.id)} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button></td>
-                  </tr>
-              ))}
+              {activeOrders.length === 0 ? (
+                <tr><td colSpan="5" className="py-8 text-center text-zinc-400 font-medium">All orders are perfectly fulfilled!</td></tr>
+              ) : activeOrders.map(order => {
+                 const reqQty = Number(order.qty || 1);
+                 const readyBases = printJobs.filter(j => j.assignedTo === order.id && j.part === 'Base' && j.status === 'ready').length;
+                 const readyCovers = printJobs.filter(j => j.assignedTo === order.id && j.part === 'Cover' && j.status === 'ready').length;
+                 
+                 const missingBases = Math.max(0, reqQty - readyBases);
+                 const missingCovers = Math.max(0, reqQty - readyCovers);
+                 const canFulfill = missingBases <= baseBuffer && missingCovers <= coverBuffer;
+                 
+                 return (
+                   <tr key={order.id} className="hover:bg-zinc-50/50 transition-colors">
+                      <td className="py-4 pr-4 font-medium text-zinc-900">
+                        <div className="truncate max-w-[200px]">{order.desc}</div>
+                        <span className="text-[10px] text-zinc-400 font-mono mt-0.5 block">{order.orderNum || 'Manual Log'}</span>
+                      </td>
+                      <td className="py-4 px-4 text-center font-bold text-lg text-zinc-800">{reqQty}</td>
+                      <td className="py-4 px-4">
+                         {readyBases >= reqQty ? (
+                            <span className="inline-flex items-center text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md text-xs font-bold border border-emerald-200"><CheckCircle2 size={12} className="mr-1"/> Ready</span>
+                         ) : (
+                            <div className="flex flex-col">
+                               <span className="text-zinc-800 text-xs font-semibold">{readyBases} / {reqQty} Assigned</span>
+                               {missingBases <= baseBuffer ? (
+                                  <span className="text-[10px] text-blue-600 font-medium mt-0.5">+ {missingBases} available in buffer</span>
+                               ) : (
+                                  <span className="text-[10px] text-red-500 font-medium mt-0.5">Missing {missingBases - baseBuffer} (Queue a print)</span>
+                               )}
+                            </div>
+                         )}
+                      </td>
+                      <td className="py-4 px-4">
+                         {readyCovers >= reqQty ? (
+                            <span className="inline-flex items-center text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md text-xs font-bold border border-emerald-200"><CheckCircle2 size={12} className="mr-1"/> Ready</span>
+                         ) : (
+                            <div className="flex flex-col">
+                               <span className="text-zinc-800 text-xs font-semibold">{readyCovers} / {reqQty} Assigned</span>
+                               {missingCovers <= coverBuffer ? (
+                                  <span className="text-[10px] text-blue-600 font-medium mt-0.5">+ {missingCovers} available in buffer</span>
+                               ) : (
+                                  <span className="text-[10px] text-red-500 font-medium mt-0.5">Missing {missingCovers - coverBuffer} (Queue a print)</span>
+                               )}
+                            </div>
+                         )}
+                      </td>
+                      <td className="py-4 pl-4 text-right">
+                         <button 
+                            disabled={!canFulfill} 
+                            onClick={() => handleShipOrder(order, missingBases, missingCovers)} 
+                            className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-200 disabled:text-zinc-400 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all shadow-sm flex items-center justify-center ml-auto"
+                         >
+                            <PackageOpen size={14} className="mr-1.5" /> Fulfill Order
+                         </button>
+                      </td>
+                   </tr>
+                 )
+              })}
             </tbody>
           </table>
         </div>
       </div>
-    </div>
-  );
-}
 
-function FleetCommand({ machines, totalTrueProfit, totalUnitsSold, onAdd, onDelete, onUpdate, formatCurrency }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], name: '', cost: '' });
-  
-  const addRow = (e) => { 
-    e.preventDefault(); 
-    if (!formData.name || !formData.cost) return; 
-    onAdd({ ...formData, cost: Number(formData.cost), maintenanceOffset: 0 }); 
-    setFormData({ ...formData, name: '', cost: '' }); 
-  };
-
-  const activeMachinesCount = Math.max(1, machines.length);
-  const profitPerMachine = totalTrueProfit / activeMachinesCount;
-  const unitsPerMachine = Math.floor(totalUnitsSold / activeMachinesCount);
-  const lifetimeHoursPerMachine = unitsPerMachine * 3.5; 
-  
-  const totalFleetValue = machines.reduce((sum, m) => sum + Number(m.cost || 0), 0);
-
-  const handleResetMaintenance = (machine) => {
-    if(onUpdate) onUpdate('machines', machine.id, { ...machine, maintenanceOffset: lifetimeHoursPerMachine });
-  };
-
-  return (
-    <div className="space-y-8 animate-in fade-in pt-8 border-t border-zinc-200/60 mt-8">
-      <div className="bg-zinc-950 rounded-[2.5rem] p-10 shadow-2xl shadow-zinc-900/20 text-white flex flex-col sm:flex-row sm:items-center justify-between relative overflow-hidden">
-        <div className="absolute top-[-50%] right-[-10%] p-8 opacity-[0.03]"><Printer size={400} /></div>
-        <div className="z-10">
-          <h2 className="text-2xl font-bold tracking-tight">Fleet Command</h2>
-          <p className="text-sm font-medium mt-2 text-zinc-400 max-w-md">Distributing total net profit and print hours automatically across active hardware.</p>
-        </div>
-        <div className="z-10 mt-6 sm:mt-0 text-left sm:text-right">
-          <div className="text-5xl font-semibold tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-white to-zinc-400">{formatCurrency(totalFleetValue)}</div>
-          <div className="text-[11px] font-bold uppercase tracking-widest mt-2 text-zinc-500">Total Fleet Value</div>
-        </div>
-      </div>
-
-      {machines.length === 0 ? (
-        <table className="w-full"><tbody className="w-full"><EmptyState icon={Printer} title="No Printers Registered" message="Add your 3D printers below to start automatically tracking their ROI and maintenance schedules." colSpan="1" /></tbody></table>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {machines.map((m) => {
-            const roiRatio = m.cost > 0 ? (profitPerMachine / m.cost) : 0;
-            const percentPaid = Math.min(100, roiRatio * 100);
-            const isPaidOff = roiRatio >= 1;
-            
-            const hoursSinceMaintenance = Math.max(0, lifetimeHoursPerMachine - (m.maintenanceOffset || 0));
-            const maintenanceThreshold = 300; 
-            const maintPercent = Math.min(100, (hoursSinceMaintenance / maintenanceThreshold) * 100);
-            const needsMaintenance = hoursSinceMaintenance >= maintenanceThreshold;
-            
-            return (
-              <div key={m.id} className={`backdrop-blur-md rounded-3xl border p-8 transition-all flex flex-col group relative overflow-hidden ${needsMaintenance ? 'bg-red-50/50 border-red-200/60 shadow-[0_8px_30px_rgb(225,29,72,0.1)]' : 'bg-white/80 border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)]'}`}>
-                <button onClick={() => onDelete(m.id)} className="absolute top-6 right-6 text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all z-20"><Trash2 size={16}/></button>
-                
-                <div className="flex items-center justify-between mb-2 pr-6">
-                  <h3 className={`font-bold tracking-tight text-lg ${needsMaintenance ? 'text-red-900' : 'text-zinc-900'}`}>{m.name}</h3>
-                  {isPaidOff && !needsMaintenance && <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md">Paid Off</span>}
-                  {needsMaintenance && <span className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md animate-pulse">Service Req</span>}
-                </div>
-                <div className={`text-xs font-medium mb-6 border-b pb-4 ${needsMaintenance ? 'text-red-700/70 border-red-200/60' : 'text-zinc-400 border-zinc-100'}`}>Acquired: {m.date} for {formatCurrency(m.cost)}</div>
-                
-                <div className="mb-6">
-                  <div className={`flex justify-between text-[10px] font-bold uppercase tracking-widest mb-2 ${needsMaintenance ? 'text-red-800/60' : 'text-zinc-500'}`}>
-                    <span>Assigned Profit</span>
-                    <span className={isPaidOff ? 'text-emerald-500' : (needsMaintenance ? 'text-red-700' : 'text-zinc-700')}>{formatCurrency(profitPerMachine)}</span>
-                  </div>
-                  <div className="w-full bg-zinc-100 rounded-full h-1.5 overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-1000 ease-out ${isPaidOff ? 'bg-emerald-400' : 'bg-zinc-900'}`} style={{ width: `${percentPaid}%` }}></div>
-                  </div>
-                  <div className="flex justify-between mt-2">
-                    <span className={`text-xs font-semibold ${needsMaintenance ? 'text-red-700/60' : 'text-zinc-400'}`}>{percentPaid.toFixed(0)}% ROI</span>
-                    {isPaidOff && <span className="text-xs font-bold text-emerald-600 tracking-tight">Paid for {roiRatio.toFixed(1)}x over</span>}
-                  </div>
-                </div>
-
-                <div className={`mt-auto rounded-xl p-4 flex flex-col border ${needsMaintenance ? 'bg-red-50 border-red-200/60' : 'bg-zinc-50 border-zinc-100/80'}`}>
-                  <div className="flex justify-between items-center mb-3">
-                    <div className={`flex items-center ${needsMaintenance ? 'text-red-800' : 'text-zinc-500'}`}>
-                      <Settings size={14} className={`mr-2 ${needsMaintenance ? 'animate-[spin_4s_linear_infinite]' : ''}`} />
-                      <span className="text-[10px] font-bold uppercase tracking-widest">Maint. Odometer</span>
-                    </div>
-                    <span className={`text-sm font-bold tracking-tight ${needsMaintenance ? 'text-red-700' : 'text-zinc-800'}`}>{hoursSinceMaintenance.toFixed(1)} / 300h</span>
-                  </div>
-                  
-                  <div className="w-full bg-zinc-200/80 rounded-full h-1.5 overflow-hidden mb-3">
-                    <div className={`h-full rounded-full transition-all duration-500 ${needsMaintenance ? 'bg-red-500' : (maintPercent > 80 ? 'bg-amber-400' : 'bg-blue-500')}`} style={{ width: `${Math.min(100, maintPercent)}%` }}></div>
-                  </div>
-
-                  {needsMaintenance && (
-                    <button onClick={() => handleResetMaintenance(m)} className="w-full mt-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold uppercase tracking-widest py-2.5 rounded-lg transition-colors shadow-sm">
-                      Log Service & Reset
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      <div className="bg-zinc-50/50 rounded-3xl border border-dashed border-zinc-200 p-8 flex flex-col justify-center transition-all hover:bg-zinc-50 hover:border-solid max-w-md mt-6">
-        <h3 className="font-bold text-zinc-700 tracking-tight mb-4 flex items-center"><Plus size={16} className="mr-2"/> Register Asset</h3>
-        <form onSubmit={addRow} className="space-y-3">
-          <input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-          <input type="text" placeholder="Asset Name (e.g. Bambu P1S)" className={inlineInputStyle} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
-          <input type="number" step="0.01" placeholder="Purchase Cost ($)" className={inlineInputStyle} value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} required />
-          <button type="submit" className="w-full bg-zinc-800 hover:bg-zinc-900 text-white font-semibold py-2 px-4 rounded-lg transition-all mt-2 text-sm shadow-sm">Save Hardware</button>
-        </form>
+      {/* 4. INDIVIDUAL PRINT QUEUE KANBAN */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+         <div className="bg-zinc-50 rounded-3xl p-5 border border-zinc-200">
+            <h3 className="font-bold text-zinc-900 mb-5 flex items-center"><Inbox size={16} className="mr-2 text-zinc-400"/> Print Queue <span className="text-xs font-medium text-zinc-400 ml-2">({queuedJobs.length})</span></h3>
+            <div className="space-y-3">
+              {queuedJobs.map(j => <JobCard key={j.id} job={j}/>)}
+              {queuedJobs.length === 0 && <div className="text-center py-8 text-zinc-400 text-xs font-medium border-2 border-dashed border-zinc-200 rounded-xl">No prints queued.</div>}
+            </div>
+         </div>
+         
+         <div className="bg-blue-50/50 rounded-3xl p-5 border border-blue-100">
+            <h3 className="font-bold text-blue-900 mb-5 flex items-center"><Settings size={16} className="mr-2 text-blue-500 animate-[spin_4s_linear_infinite]"/> Printers Active <span className="text-xs font-medium text-blue-400 ml-2">({printingJobs.length})</span></h3>
+            <div className="space-y-3">
+              {printingJobs.map(j => <JobCard key={j.id} job={j}/>)}
+              {printingJobs.length === 0 && <div className="text-center py-8 text-blue-300 text-xs font-medium border-2 border-dashed border-blue-100 rounded-xl">Printers are idle.</div>}
+            </div>
+         </div>
+         
+         <div className="bg-emerald-50/50 rounded-3xl p-5 border border-emerald-100 relative">
+            <h3 className="font-bold text-emerald-900 mb-5 flex items-center"><Package size={16} className="mr-2 text-emerald-500"/> Assigned to Order <span className="text-xs font-medium text-emerald-400 ml-2">({readyJobs.length})</span></h3>
+            <div className="space-y-3">
+              {readyJobs.map(j => <JobCard key={j.id} job={j}/>)}
+              {readyJobs.length === 0 && <div className="text-center py-8 text-emerald-400 text-xs font-medium border-2 border-dashed border-emerald-100 rounded-xl">Nothing waiting to ship.</div>}
+            </div>
+            <p className="text-[9px] text-emerald-600/70 text-center font-bold tracking-wide uppercase mt-6">Note: Parts assigned to the Safety Buffer are instantly shelved when finished.</p>
+         </div>
       </div>
     </div>
   );
 }
 
-function ProgressCard({ drawsRecoup, initialGoal, remainingToRecoup, formatCurrency, onUpdateGoal }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [tempGoal, setTempGoal] = useState(initialGoal);
-  const handleSave = () => { onUpdateGoal(Number(tempGoal)); setIsEditing(false); };
-  const percentComplete = initialGoal > 0 ? Math.min(100, (drawsRecoup / initialGoal) * 100) : 100;
-
-  return (
-    <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center relative group hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all">
-      <div className="absolute top-6 right-6">
-        {!isEditing && <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-zinc-900 transition-colors p-1 opacity-0 group-hover:opacity-100" title="Edit Initial Goal"><Edit2 size={16} /></button>}
-      </div>
-      <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Remaining to Recoup</h3>
-      <div className="text-3xl sm:text-4xl font-bold tracking-tighter text-zinc-900 mb-2">
-        <AnimatedNumber value={remainingToRecoup} formatCurrency={formatCurrency} />
-      </div>
-      <div className="w-full bg-zinc-100 rounded-full h-1.5 mt-5 overflow-hidden"><div className="bg-zinc-900 h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${percentComplete}%` }}></div></div>
-      {isEditing ? (
-        <div className="flex items-center space-x-3 mt-5 bg-zinc-50 p-2 rounded-xl border border-zinc-200">
-          <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest ml-2">Goal $</span>
-          <input type="number" className="border-none bg-transparent w-24 text-sm font-semibold outline-none text-zinc-900" value={tempGoal} onChange={(e) => setTempGoal(e.target.value)} />
-          <button onClick={handleSave} className="bg-zinc-900 text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"><Check size={14} /></button>
-        </div>
-      ) : <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-400 mt-4">{percentComplete.toFixed(0)}% to {formatCurrency(initialGoal)} goal</p>}
-    </div>
-  );
-}
-
-function DashboardCard({ title, amount, subtitle, color, isNegative, highlight, formatCurrency }) {
-  const colorMap = { blue: 'text-blue-600', red: 'text-zinc-900', emerald: 'text-emerald-600', zinc: 'text-zinc-900', indigo: 'text-zinc-900' };
-  return (
-    <div className={`bg-white/80 backdrop-blur-md rounded-3xl p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${highlight ? 'ring-1 ring-zinc-200/60' : 'border border-zinc-100'}`}>
-      <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{title}</h3>
-      <div className={`text-3xl sm:text-4xl font-bold tracking-tighter mt-3 ${colorMap[color] || 'text-zinc-900'}`}>
-        {isNegative && amount > 0 ? '-' : ''}
-        <AnimatedNumber value={amount} formatCurrency={formatCurrency} />
-      </div>
-      <p className="text-sm font-medium text-zinc-400 mt-2">{subtitle}</p>
-    </div>
-  );
-}
-
-function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, formatCurrency }) {
+function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, formatCurrency, showToast }) {
   const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', salesTax: '', ebay: '', ad: '', shipping: '', state: '' });
   const [importPreview, setImportPreview] = useState(null);
   const [importStats, setImportStats] = useState({ total: 0, unchanged: 0, updated: 0, new: 0 });
@@ -1869,6 +1699,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       }
     }); 
     setImportPreview(null); 
+    if(showToast) showToast(`Successfully imported records!`, 'success');
   };
 
   return (
@@ -2035,409 +1866,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
               })}
             </tbody>
           </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency, uploadReceipt }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Supplies', amount: '' });
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({});
-  const [file, setFile] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const categories = ['Supplies', 'Advertising', 'Travel', 'Equipment', 'Office'];
-  const { items: sortedExpenses, requestSort, sortConfig } = useSortableData(expenses);
-
-  const addRow = async (e) => { 
-    e.preventDefault(); 
-    if (!formData.amount) return; 
-    setIsUploading(true);
-    let receiptUrl = '';
-    if (file) { receiptUrl = await uploadReceipt(file) || ''; }
-    onAdd({ ...formData, receiptUrl }); 
-    setFormData({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Supplies', amount: '' }); 
-    setFile(null);
-    setIsUploading(false);
-  };
-  
-  const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item, category: item.category || 'Supplies' }); };
-  const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
-
-  const handleExport = () => {
-    const headers = ['Date', 'Description', 'Category', 'Amount', 'Receipt Link'];
-    const data = sortedExpenses.map(e => [e.date, e.desc, e.category, e.amount, e.receiptUrl || '']);
-    exportToCsv('Apex_Expenses.csv', [headers, ...data]);
-  };
-
-  return (
-    <div className="space-y-8 animate-in fade-in">
-      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
-        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Expense</h2>
-        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-5 gap-4">
-          <input type="date" className={`${inlineInputStyle} col-span-1`} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-          <input type="text" placeholder="Description" className={`${inlineInputStyle} col-span-1`} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
-          <select className={`${inlineInputStyle} col-span-1`} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
-          <input type="number" step="0.01" placeholder="Amount ($)" className={`${inlineInputStyle} col-span-1`} value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
-          <input type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files[0])} className="col-span-1 text-[10px] uppercase font-bold tracking-wider text-zinc-500 file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:uppercase file:tracking-wider file:font-bold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 transition-colors cursor-pointer" />
-          <button type="submit" disabled={isUploading} className="sm:col-span-5 bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-300 text-white font-semibold py-3.5 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2 shadow-md">
-             {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Receipt...</> : <><Plus size={18} className="mr-2" /> Save Expense</>}
-          </button>
-        </form>
-      </div>
-
-      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
-          <h3 className="font-bold tracking-tight text-zinc-900 text-lg">Audit-Proof Ledger</h3>
-          <button onClick={handleExport} className="text-[11px] font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-zinc-50/50 border-b border-zinc-100">
-              <tr>
-                <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Category" sortKey="category" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Amount" sortKey="amount" currentSort={sortConfig} requestSort={requestSort} alignRight />
-                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-zinc-400 text-center select-none">Receipt</th>
-                <th className="px-6 py-4"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-50">
-              {sortedExpenses.length === 0 ? (
-                <EmptyState icon={Receipt} title="No expenses logged" message="Log your first expense to activate tax tracking and secure digital receipts." colSpan="6" />
-              ) : sortedExpenses.map(e => (
-                editingId === e.id ? (
-                  <tr key={e.id} className="bg-blue-50/30">
-                    <td className="px-3 py-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
-                    <td className="px-3 py-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
-                    <td className="px-3 py-2">
-                      <select className={inlineInputStyle} value={editForm.category} onChange={ev => setEditForm({...editForm, category: ev.target.value})}>
-                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.amount} onChange={ev => setEditForm({...editForm, amount: ev.target.value})} /></td>
-                    <td className="px-6 py-4 text-center text-zinc-300">-</td>
-                    <td className="px-4 py-2 text-right space-x-2">
-                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700 p-1 bg-emerald-50 rounded"><Check size={16}/></button>
-                      <button onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-zinc-600 p-1 bg-zinc-100 rounded"><X size={16}/></button>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={e.id} className="hover:bg-zinc-50/50 transition-colors group">
-                    <td className="px-6 py-4 font-medium text-zinc-500">{e.date}</td>
-                    <td className="px-6 py-4 font-semibold text-zinc-800">{e.desc}</td>
-                    <td className="px-6 py-4"><span className="px-3 py-1 bg-zinc-100 rounded-lg text-[10px] font-bold uppercase tracking-wider text-zinc-600 border border-zinc-200/60">{e.category}</span></td>
-                    <td className="px-6 py-4 text-right font-semibold text-zinc-900 tracking-tight">{formatCurrency(e.amount)}</td>
-                    <td className="px-6 py-4 text-center">
-                      {e.receiptUrl ? (
-                        <a href={e.receiptUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center p-2 bg-zinc-100 text-zinc-700 rounded-xl hover:bg-zinc-200 hover:text-zinc-900 transition-colors" title="View Receipt">
-                          <ImageIcon size={14} />
-                        </a>
-                      ) : <span className="text-zinc-300">-</span>}
-                    </td>
-                    <td className="px-6 py-4 text-right space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => startEdit(e)} className="text-zinc-400 hover:text-zinc-900"><Edit2 size={16}/></button>
-                      <button onClick={() => onDelete(e.id)} className="text-zinc-300 hover:text-red-500"><Trash2 size={16}/></button>
-                    </td>
-                  </tr>
-                )
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function OwnerEquity({ equities, initialGoal, onAdd, onUpdate, onDelete, formatCurrency }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Recoup Investment', amount: '' });
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({});
-  const categories = ['Recoup Investment', 'Golf Fund', 'Amex Transfer (Op Cash)', 'Other Draw'];
-  const { items: sortedEquities, requestSort, sortConfig } = useSortableData(equities);
-
-  const addRow = (e) => { e.preventDefault(); onAdd(formData); setFormData({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Recoup Investment', amount: '' }); };
-  const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item, category: item.category || 'Recoup Investment' }); };
-  const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
-
-  const handleExport = () => {
-    const headers = ['Date', 'Description', 'Category', 'Amount'];
-    const data = sortedEquities.map(e => [e.date, e.desc, e.category || 'Recoup Investment', e.amount]);
-    exportToCsv('Apex_Payouts_Transfers.csv', [headers, ...data]);
-  };
-
-  return (
-    <div className="space-y-8 animate-in fade-in">
-      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
-        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Record Transfer</h2>
-        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-          <input type="text" placeholder="Description (e.g. Owner Draw)" className={inlineInputStyle} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
-          <select className={inlineInputStyle} value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <input type="number" step="0.01" placeholder="Amount ($)" className={inlineInputStyle} value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
-          <button type="submit" className="sm:col-span-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2 shadow-md"><Plus size={18} className="mr-2" /> Log Transaction</button>
-        </form>
-      </div>
-
-      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
-          <h3 className="font-bold tracking-tight text-zinc-900 text-lg">Transaction History</h3>
-          <button onClick={handleExport} className="text-[11px] font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-zinc-50/50 border-b border-zinc-100">
-              <tr>
-                <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Category" sortKey="category" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Amount" sortKey="amount" currentSort={sortConfig} requestSort={requestSort} alignRight />
-                <th className="p-4"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-50">
-              {sortedEquities.length === 0 ? (
-                <EmptyState icon={Wallet} title="No transfers found" message="Log owner draws or operational bank transfers here." colSpan="5" />
-              ) : sortedEquities.map(e => (
-                editingId === e.id ? (
-                  <tr key={e.id} className="bg-blue-50/30">
-                    <td className="px-3 py-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
-                    <td className="px-3 py-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
-                    <td className="px-3 py-2">
-                      <select className={inlineInputStyle} value={editForm.category} onChange={ev => setEditForm({...editForm, category: ev.target.value})}>
-                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2"><input type="number" step="0.01" className={inlineInputStyle} value={editForm.amount} onChange={ev => setEditForm({...editForm, amount: ev.target.value})} /></td>
-                    <td className="px-4 py-2 text-right space-x-2">
-                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700 p-1 bg-emerald-50 rounded"><Check size={16}/></button>
-                      <button onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-zinc-600 p-1 bg-zinc-100 rounded"><X size={16}/></button>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={e.id} className="hover:bg-zinc-50/50 transition-colors group">
-                    <td className="px-6 py-4 font-medium text-zinc-500">{e.date}</td>
-                    <td className="px-6 py-4 font-semibold text-zinc-800">{e.desc}</td>
-                    <td className="px-6 py-4"><span className="px-3 py-1 bg-zinc-100 rounded-lg text-[10px] font-bold uppercase tracking-wider text-zinc-600 border border-zinc-200/60">{e.category || 'Recoup Investment'}</span></td>
-                    <td className="px-6 py-4 text-right font-semibold text-zinc-900 tracking-tight">{formatCurrency(e.amount)}</td>
-                    <td className="px-6 py-4 text-right space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => startEdit(e)} className="text-zinc-400 hover:text-zinc-900"><Edit2 size={16}/></button>
-                      <button onClick={() => onDelete(e.id)} className="text-zinc-300 hover:text-red-500"><Trash2 size={16}/></button>
-                    </td>
-                  </tr>
-                )
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MileageLog({ mileages, onAdd, onUpdate, onDelete, formatCurrency }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', miles: '' });
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({});
-  const RATE_2026 = 0.725;
-  
-  const enrichedMileages = useMemo(() => mileages.map(m => ({ ...m, deduction: m.miles * RATE_2026 })), [mileages]);
-  const { items: sortedMileages, requestSort, sortConfig } = useSortableData(enrichedMileages);
-
-  const addRow = (e) => { e.preventDefault(); onAdd(formData); setFormData({ date: new Date().toISOString().split('T')[0], desc: '', miles: '' }); };
-  const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item }); };
-  const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
-
-  const handleExport = () => {
-    const headers = ['Date', 'Trip Description', 'Miles', 'Deduction Value'];
-    const data = sortedMileages.map(m => [m.date, m.desc, m.miles, m.deduction]);
-    exportToCsv('Apex_Mileage_Log.csv', [headers, ...data]);
-  };
-
-  return (
-    <div className="space-y-8 animate-in fade-in">
-      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
-        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Track Miles</h2>
-        <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <input type="date" className={inlineInputStyle} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
-          <input type="text" placeholder="Trip Description" className={inlineInputStyle} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
-          <input type="number" step="0.1" placeholder="Total Miles" className={inlineInputStyle} value={formData.miles} onChange={e => setFormData({...formData, miles: e.target.value})} required />
-          <button type="submit" className="sm:col-span-3 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2 shadow-md"><Plus size={18} className="mr-2" /> Log Miles</button>
-        </form>
-      </div>
-
-      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] overflow-hidden">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
-          <h3 className="font-bold tracking-tight text-zinc-900 text-lg">Trip Log</h3>
-          <button onClick={handleExport} className="text-[11px] font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-900 flex items-center transition-colors bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full hover:bg-zinc-100"><Download size={14} className="mr-2" /> Export</button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-zinc-50/50 border-b border-zinc-100">
-              <tr>
-                <SortableHeader label="Date" sortKey="date" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Description" sortKey="desc" currentSort={sortConfig} requestSort={requestSort} />
-                <SortableHeader label="Miles" sortKey="miles" currentSort={sortConfig} requestSort={requestSort} alignRight />
-                <SortableHeader label="Deduction Value" sortKey="deduction" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-zinc-500" />
-                <th className="p-4"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-50">
-              {sortedMileages.length === 0 ? (
-                <EmptyState icon={Car} title="No trips logged" message="Track your business mileage to maximize your end-of-year tax deductions." colSpan="5" />
-              ) : sortedMileages.map(m => (
-                editingId === m.id ? (
-                  <tr key={m.id} className="bg-blue-50/30">
-                    <td className="px-3 py-2"><input type="date" className={inlineInputStyle} value={editForm.date} onChange={ev => setEditForm({...editForm, date: ev.target.value})} /></td>
-                    <td className="px-3 py-2"><input type="text" className={inlineInputStyle} value={editForm.desc} onChange={ev => setEditForm({...editForm, desc: ev.target.value})} /></td>
-                    <td className="px-3 py-2"><input type="number" step="0.1" className={inlineInputStyle} value={editForm.miles} onChange={ev => setEditForm({...editForm, miles: ev.target.value})} /></td>
-                    <td className="px-6 py-4 text-right text-zinc-300">-</td>
-                    <td className="px-4 py-2 text-right space-x-2">
-                      <button onClick={saveEdit} className="text-emerald-600 hover:text-emerald-700 p-1 bg-emerald-50 rounded"><Check size={16}/></button>
-                      <button onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-zinc-600 p-1 bg-zinc-100 rounded"><X size={16}/></button>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={m.id} className="hover:bg-zinc-50/50 transition-colors group">
-                    <td className="px-6 py-4 font-medium text-zinc-500">{m.date}</td>
-                    <td className="px-6 py-4 font-semibold text-zinc-800">{m.desc}</td>
-                    <td className="px-6 py-4 text-right font-semibold text-zinc-900">{m.miles} mi</td>
-                    <td className="px-6 py-4 text-right font-bold text-blue-600 tracking-tight">{formatCurrency(m.deduction)}</td>
-                    <td className="px-6 py-4 text-right space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => startEdit(m)} className="text-zinc-400 hover:text-zinc-900"><Edit2 size={16}/></button>
-                      <button onClick={() => onDelete(m.id)} className="text-zinc-300 hover:text-red-500"><Trash2 size={16}/></button>
-                    </td>
-                  </tr>
-                )
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Manufacturing({ cogs, onUpdate, costPerTrainer, blackPetgCostPerGram, whitePetgCostPerGram, formatCurrency }) {
-  const handleChange = (e) => { onUpdate({ ...cogs, [e.target.name]: Number(e.target.value) }); };
-
-  return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-zinc-900 rounded-[2.5rem] p-10 shadow-2xl shadow-zinc-900/20 text-white flex flex-col justify-center relative overflow-hidden order-1">
-          <div className="absolute top-0 right-0 p-8 opacity-5"><Settings size={200} className="animate-[spin_40s_linear_infinite]" /></div>
-          <h2 className="text-2xl font-bold tracking-tight text-white mb-10 z-10">Unit Economics</h2>
-          <div className="space-y-5 z-10 text-sm font-medium">
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Black PETG</span><span className="font-bold tracking-tight">{formatCurrency(blackPetgCostPerGram * (cogs.blackGramsUsed || 533))}</span></div>
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">White PETG</span><span className="font-bold tracking-tight">{formatCurrency(whitePetgCostPerGram * (cogs.whiteGramsUsed || 11))}</span></div>
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Concrete</span><span className="font-bold tracking-tight">{formatCurrency(cogs.concreteCost * cogs.lbsUsed)}</span></div>
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Hardware</span><span className="font-bold tracking-tight">{formatCurrency(Number(cogs.screwsCost || 0) + Number(cogs.insertsCost || 0) + Number(cogs.washersCost || 0))}</span></div>
-            <div className="flex justify-between items-center border-b border-zinc-800 pb-3"><span className="text-zinc-400">Packaging</span><span className="font-bold tracking-tight">{formatCurrency(Number(cogs.boxCost || 0) + Number(cogs.bubbleWrapCost || 0))}</span></div>
-            <div className="pt-6 flex justify-between items-end"><span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Total COGS</span><span className="text-5xl font-semibold tracking-tighter text-emerald-400">{formatCurrency(costPerTrainer)}</span></div>
-          </div>
-        </div>
-
-        <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] order-2">
-          <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-8">Supply Variables</h2>
-          <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-2 hide-scrollbar">
-            <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Raw Materials</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Black Spool $</label><input type="number" step="0.01" name="blackSpoolCost" value={cogs.blackSpoolCost || ''} onChange={handleChange} className={inlineInputStyle} /></div>
-              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Black Grams</label><input type="number" name="blackGramsUsed" value={cogs.blackGramsUsed || ''} onChange={handleChange} className={inlineInputStyle} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">White Spool $</label><input type="number" step="0.01" name="whiteSpoolCost" value={cogs.whiteSpoolCost || ''} onChange={handleChange} className={inlineInputStyle} /></div>
-              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">White Grams</label><input type="number" name="whiteGramsUsed" value={cogs.whiteGramsUsed || ''} onChange={handleChange} className={inlineInputStyle} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Concrete $/lb</label><input type="number" step="0.01" name="concreteCost" value={cogs.concreteCost} onChange={handleChange} className={inlineInputStyle} /></div>
-              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">lbs Used</label><input type="number" step="0.1" name="lbsUsed" value={cogs.lbsUsed} onChange={handleChange} className={inlineInputStyle} /></div>
-            </div>
-            <hr className="border-zinc-100 my-6" />
-            <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Hardware</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Screws</label><input type="number" step="0.01" name="screwsCost" value={cogs.screwsCost} onChange={handleChange} className={inlineInputStyle} /></div>
-              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Inserts</label><input type="number" step="0.01" name="insertsCost" value={cogs.insertsCost} onChange={handleChange} className={inlineInputStyle} /></div>
-              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Washers</label><input type="number" step="0.01" name="washersCost" value={cogs.washersCost} onChange={handleChange} className={inlineInputStyle} /></div>
-            </div>
-            <hr className="border-zinc-100 my-6" />
-            <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Packaging</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Box</label><input type="number" step="0.01" name="boxCost" value={cogs.boxCost} onChange={handleChange} className={inlineInputStyle} /></div>
-              <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Wrap</label><input type="number" step="0.01" name="bubbleWrapCost" value={cogs.bubbleWrapCost} onChange={handleChange} className={inlineInputStyle} /></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TaxSummary({ revenues, expenses, mileages, formatCurrency }) {
-  const grossSales = revenues.reduce((sum, r) => sum + Number(r.gross || 0), 0);
-  const ebayAdFees = revenues.reduce((sum, r) => sum + Number(r.ebay || 0) + Number(r.ad || 0), 0);
-  const shippingFees = revenues.reduce((sum, r) => sum + Number(r.shipping || 0), 0);
-  const expAdvertising = expenses.filter(e => e.category === 'Advertising').reduce((sum, e) => sum + Number(e.amount), 0);
-  const expOffice = expenses.filter(e => e.category === 'Office').reduce((sum, e) => sum + Number(e.amount), 0);
-  const expSupplies = expenses.filter(e => e.category === 'Supplies').reduce((sum, e) => sum + Number(e.amount), 0);
-  const expTravel = expenses.filter(e => e.category === 'Travel').reduce((sum, e) => sum + Number(e.amount), 0);
-  const expEquipment = expenses.filter(e => e.category === 'Equipment').reduce((sum, e) => sum + Number(e.amount), 0);
-  const totalMiles = mileages.reduce((sum, m) => sum + Number(m.miles || 0), 0);
-  const mileageDeduction = totalMiles * 0.725;
-  const totalExpenses = ebayAdFees + shippingFees + expAdvertising + expOffice + expSupplies + expTravel + expEquipment + mileageDeduction;
-  const netProfit = grossSales - totalExpenses;
-
-  const TaxLine = ({ line, description, amount, isTotal }) => (
-    <div className={`flex justify-between items-center py-3 border-b border-zinc-100 ${isTotal ? 'bg-zinc-50 font-bold text-zinc-900 p-4 rounded-xl mt-2' : 'text-zinc-600 text-sm font-medium'}`}>
-      <div className="flex items-center"><span className="w-16 text-[10px] font-bold tracking-widest text-zinc-400 uppercase">Line {line}</span><span>{description}</span></div><span className="tracking-tight">{formatCurrency(amount)}</span>
-    </div>
-  );
-
-  return (
-    <div className="space-y-6 animate-in fade-in print-area max-w-4xl mx-auto">
-      <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-10 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
-        
-        <div className="flex items-center justify-between mb-10 pb-6 border-b border-zinc-100">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight text-zinc-900">Schedule C Preparer</h2>
-            <p className="text-sm font-medium text-zinc-400 mt-1">Apex Performance Concepts LLC</p>
-          </div>
-          <div className="text-right flex flex-col items-end">
-            <button onClick={() => window.print()} className="no-print mb-4 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-wider py-2.5 px-5 rounded-full flex items-center transition-all hover:-translate-y-0.5 shadow-md"><Printer size={14} className="mr-2"/> Print PDF</button>
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Tax Year</p>
-            <p className="text-xl font-bold tracking-tight text-zinc-900">2026</p>
-          </div>
-        </div>
-
-        <div className="mb-10">
-          <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-3 pl-1">Part I: Income</h3>
-          <TaxLine line="1" description="Gross receipts or sales" amount={grossSales} />
-          <TaxLine line="7" description="Gross income" amount={grossSales} isTotal />
-        </div>
-
-        <div className="mb-10">
-          <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-3 pl-1">Part II: Expenses</h3>
-          <TaxLine line="8" description="Advertising" amount={expAdvertising} />
-          <TaxLine line="9" description="Car/truck expenses (Mileage)" amount={mileageDeduction} />
-          <TaxLine line="10" description="Commissions and fees" amount={ebayAdFees} />
-          <TaxLine line="18" description="Office expense" amount={expOffice} />
-          <TaxLine line="22" description="Supplies" amount={expSupplies} />
-          <TaxLine line="24a" description="Travel" amount={expTravel} />
-          <TaxLine line="27a" description="Other: Shipping Labels" amount={shippingFees} />
-          <TaxLine line="27a" description="Other: Equipment" amount={expEquipment} />
-          <TaxLine line="28" description="Total expenses" amount={totalExpenses} isTotal />
-        </div>
-
-        <div className="mb-6">
-          <div className={`p-6 rounded-2xl flex justify-between items-center border ${netProfit >= 0 ? 'bg-emerald-50/50 border-emerald-200/60 text-emerald-900 shadow-sm' : 'bg-red-50 border-red-200 text-red-900'}`}>
-            <div className="flex items-center"><span className="w-16 text-[10px] uppercase tracking-widest font-bold opacity-50">Line 31</span><span className="font-bold text-lg tracking-tight">Net profit (or loss)</span></div>
-            <span className="text-3xl font-semibold tracking-tighter">{formatCurrency(netProfit)}</span>
-          </div>
         </div>
       </div>
     </div>
