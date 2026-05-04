@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
-  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X, ArrowUpDown, ChevronUp, ChevronDown, PieChart, BarChart3, Printer, Zap, ArrowRightLeft, ShieldCheck, Target, Package, AlertTriangle, Image as ImageIcon, Map as MapIcon, Loader2, Inbox, PackageOpen, TrendingUp, Sparkles, ShoppingCart
+  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X, ArrowUpDown, ChevronUp, ChevronDown, PieChart, BarChart3, Printer, Zap, ArrowRightLeft, ShieldCheck, Target, Package, AlertTriangle, Image as ImageIcon, Map as MapIcon, Loader2, Inbox, PackageOpen, TrendingUp, Sparkles, ShoppingCart, 
+  Clock, Play, CheckCircle2, ArrowRight
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
@@ -189,6 +190,7 @@ const useSortableData = (items, defaultKey = 'date') => {
     }
     return sortableItems;
   }, [items, sortConfig]);
+  
   const requestSort = (key) => {
     let direction = 'ascending';
     if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') { direction = 'descending'; }
@@ -225,7 +227,12 @@ export default function App() {
   const [restocks, setRestocks] = useState([]);
   const [machines, setMachines] = useState([]);
   
-  const [appSettings, setAppSettings] = useState({ initialInvestment: 1219.00 });
+  const [appSettings, setAppSettings] = useState({ 
+    initialInvestment: 1219.00,
+    finishedBuffer: 0,
+    targetBuffer: 6
+  });
+  
   const [cogs, setCogs] = useState({
     blackSpoolCost: 16.99, blackGramsUsed: 533, 
     whiteSpoolCost: 16.99, whiteGramsUsed: 11,
@@ -279,7 +286,16 @@ export default function App() {
         }));
       } 
     }, console.error);
-    const unsubSettings = onSnapshot(getDocRef('settings', 'app'), (docSnap) => { if (docSnap.exists()) setAppSettings(docSnap.data()); }, console.error);
+    
+    const unsubSettings = onSnapshot(getDocRef('settings', 'app'), (docSnap) => { 
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setAppSettings(prev => ({
+          ...prev,
+          ...data
+        })); 
+      } 
+    }, console.error);
 
     return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubRestocks(); unsubMachines(); unsubCogs(); unsubSettings(); };
   }, [user]);
@@ -378,6 +394,9 @@ export default function App() {
   // --- WAREHOUSE & PREDICTIVE ENGINE ---
   const INVENTORY_START_DATE = '2026-04-29';
   const inventoryUnitsSold = useMemo(() => revenues.filter(r => r.date >= INVENTORY_START_DATE).reduce((sum, r) => sum + Number(r.qty || 1), 0), [revenues]);
+  
+  // Total raw materials consumed is Sales PLUS whatever you've pre-built for the shelf
+  const totalManufacturedUnits = inventoryUnitsSold + Number(appSettings.finishedBuffer || 0);
 
   const fourteenDaysAgoStr = useMemo(() => {
     const d = new Date(); d.setDate(d.getDate() - 14);
@@ -393,15 +412,15 @@ export default function App() {
   }, [restocks]);
 
   const currentStock = useMemo(() => ({
-    blackPetg: ((restockTotals['Black PETG (grams)'] || 0) + (restockTotals['PETG (grams)'] || 0)) - (inventoryUnitsSold * (cogs.blackGramsUsed || 533)),
-    whitePetg: (restockTotals['White PETG (grams)'] || 0) - (inventoryUnitsSold * (cogs.whiteGramsUsed || 11)),
-    concrete: (restockTotals['Concrete (lbs)'] || 0) - (inventoryUnitsSold * (cogs.lbsUsed || 5)),
-    boxes: (restockTotals['Boxes (qty)'] || 0) - inventoryUnitsSold,
-    wrap: (restockTotals['Bubble Wrap (qty)'] || 0) - inventoryUnitsSold,
-    screws: (restockTotals['Screws (sets)'] || 0) - inventoryUnitsSold,
-    inserts: (restockTotals['Inserts (sets)'] || 0) - inventoryUnitsSold,
-    washers: (restockTotals['Washers (sets)'] || 0) - inventoryUnitsSold,
-  }), [restockTotals, inventoryUnitsSold, cogs]);
+    blackPetg: ((restockTotals['Black PETG (grams)'] || 0) + (restockTotals['PETG (grams)'] || 0)) - (totalManufacturedUnits * (cogs.blackGramsUsed || 533)),
+    whitePetg: (restockTotals['White PETG (grams)'] || 0) - (totalManufacturedUnits * (cogs.whiteGramsUsed || 11)),
+    concrete: (restockTotals['Concrete (lbs)'] || 0) - (totalManufacturedUnits * (cogs.lbsUsed || 5)),
+    boxes: (restockTotals['Boxes (qty)'] || 0) - totalManufacturedUnits,
+    wrap: (restockTotals['Bubble Wrap (qty)'] || 0) - totalManufacturedUnits,
+    screws: (restockTotals['Screws (sets)'] || 0) - totalManufacturedUnits,
+    inserts: (restockTotals['Inserts (sets)'] || 0) - totalManufacturedUnits,
+    washers: (restockTotals['Washers (sets)'] || 0) - totalManufacturedUnits,
+  }), [restockTotals, totalManufacturedUnits, cogs]);
 
   const buildableUnits = useMemo(() => Math.floor(Math.min(
     cogs.blackGramsUsed > 0 ? Math.max(0, currentStock.blackPetg / cogs.blackGramsUsed) : Infinity,
@@ -488,10 +507,11 @@ export default function App() {
             <div className="flex gap-1 bg-zinc-100/50 p-1.5 rounded-full border border-zinc-200/50 w-max mb-1">
               <TabButton id="dashboard" icon={LayoutDashboard} label="Command Center" />
               <TabButton id="analytics" icon={MapIcon} label="Analytics" />
+              <TabButton id="production" icon={Zap} label="Production" />
               <TabButton id="revenue" icon={DollarSign} label="Revenue" />
               <TabButton id="warehouse" icon={Package} label="Warehouse" />
               <TabButton id="fleet" icon={Printer} label="Fleet ROI" />
-              <TabButton id="expenses" icon={Receipt} label="Vault" />
+              <TabButton id="expenses" icon={Receipt} label="Expenses" />
               <TabButton id="equity" icon={Wallet} label="Equity" />
               <TabButton id="mileage" icon={Car} label="Mileage" />
               <TabButton id="cogs" icon={Settings} label="Manufacturing" />
@@ -608,6 +628,7 @@ export default function App() {
             )}
 
             {activeTab === 'analytics' && <Analytics revenues={revenues} expenses={expenses} formatCurrency={formatCurrency} totalTrueProfit={totalTrueProfit} totalUnitsSold={totalUnitsSold} />}
+            {activeTab === 'production' && <ProductionBoard revenues={revenues} appSettings={appSettings} handleUpdateSettings={handleUpdateSettings} handleUpdateRecord={handleUpdateRecord} buildableUnits={buildableUnits} />}
             {activeTab === 'warehouse' && <Warehouse restocks={restocks} currentStock={currentStock} buildableUnits={buildableUnits} runoutDays={runoutDays} dailySalesVelocity={dailySalesVelocity} onAdd={(data) => handleAdd('restocks', data)} onDelete={(id) => handleDelete('restocks', id)} formatCurrency={formatCurrency} cogs={cogs} />}
             {activeTab === 'fleet' && <FleetCommand machines={machines} totalTrueProfit={totalTrueProfit} totalUnitsSold={totalUnitsSold} onAdd={(data) => handleAdd('machines', data)} onDelete={(id) => handleDelete('machines', id)} onUpdate={handleUpdateRecord} formatCurrency={formatCurrency} />}
             {activeTab === 'revenue' && <RevenueLog revenues={revenues} costPerTrainer={costPerTrainer} onAdd={(data) => handleAdd('revenues', data)} onUpdate={(id, data) => handleUpdateRecord('revenues', id, data)} onDelete={(id) => handleDelete('revenues', id)} formatCurrency={formatCurrency} />}
@@ -673,6 +694,189 @@ function QuickRevenueModal({ onClose, onAdd }) {
   );
 }
 
+function ProductionBoard({ revenues, appSettings, handleUpdateSettings, handleUpdateRecord, buildableUnits }) {
+  const finishedBuffer = Number(appSettings.finishedBuffer || 0);
+  const targetBuffer = Number(appSettings.targetBuffer || 6);
+
+  // Auto-clean old records so they don't clog the board if you just uploaded a giant historical CSV
+  const activeOrders = useMemo(() => {
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    const cutoff = fiveDaysAgo.toISOString().split('T')[0];
+
+    return revenues.filter(r => {
+      // If it explicitly has a status and isn't shipped, keep it
+      if (r.fulfillmentStatus && r.fulfillmentStatus !== 'shipped') return true;
+      // If it doesn't have a status but is brand new, put it on the board
+      if (!r.fulfillmentStatus && r.date >= cutoff && Number(r.qty) > 0) return true;
+      return false;
+    }).sort((a, b) => new Date(a.date) - new Date(b.date)); // Oldest first
+  }, [revenues]);
+
+  const updateStatus = (id, newStatus) => {
+    handleUpdateRecord('revenues', id, { fulfillmentStatus: newStatus });
+  };
+
+  const pullFromBuffer = (order) => {
+    if (finishedBuffer >= Number(order.qty || 1)) {
+      handleUpdateSettings({ ...appSettings, finishedBuffer: finishedBuffer - Number(order.qty || 1) });
+      updateStatus(order.id, 'shipped');
+    } else {
+      alert("Not enough fully assembled units in the safety buffer!");
+    }
+  };
+
+  const adjustBuffer = (amount) => {
+    const newTotal = Math.max(0, finishedBuffer + amount);
+    if (amount > 0 && buildableUnits < amount) {
+      alert("Not enough raw materials in the Warehouse to print this!");
+      return;
+    }
+    handleUpdateSettings({ ...appSettings, finishedBuffer: newTotal });
+  };
+
+  const getUrgency = (dateStr) => {
+    const orderDate = new Date(dateStr);
+    const diffHours = Math.floor((new Date() - orderDate) / (1000 * 60 * 60));
+    const hoursLeft = 72 - diffHours;
+    
+    if (hoursLeft < 0) return { text: `${Math.abs(hoursLeft)}h OVERDUE`, color: 'text-rose-700 bg-rose-100 border-rose-300 shadow-[0_0_10px_rgba(225,29,72,0.4)] animate-pulse' };
+    if (hoursLeft <= 24) return { text: `${hoursLeft}h LEFT`, color: 'text-amber-700 bg-amber-100 border-amber-300' };
+    return { text: `${hoursLeft}h left`, color: 'text-blue-700 bg-blue-100 border-blue-200' };
+  };
+
+  const OrderCard = ({ order, status }) => {
+    const urgency = getUrgency(order.date);
+    const isOverdue = urgency.text.includes('OVERDUE');
+    return (
+      <div className={`bg-white rounded-2xl border p-4 shadow-sm hover:shadow-md transition-all group ${isOverdue ? 'border-rose-200' : 'border-zinc-200'}`}>
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <div className="font-bold text-sm text-zinc-900 line-clamp-1">{order.desc}</div>
+            <div className="text-[10px] font-mono text-zinc-500 mt-0.5">{order.orderNum || 'Manual Sale'} • Qty: {order.qty}</div>
+          </div>
+          <div className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border ${urgency.color} whitespace-nowrap ml-2`}>
+            {urgency.text}
+          </div>
+        </div>
+        
+        <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-zinc-100">
+          {(!status || status === 'new') && (
+            <>
+              {finishedBuffer >= Number(order.qty || 1) && (
+                <button onClick={() => pullFromBuffer(order)} className="w-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center">
+                  <PackageOpen size={14} className="mr-1.5" /> Pull from Buffer
+                </button>
+              )}
+              <button onClick={() => updateStatus(order.id, 'printing')} className="w-full bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center">
+                <Play size={14} className="mr-1.5" /> Start Printing
+              </button>
+            </>
+          )}
+          {status === 'printing' && (
+            <button onClick={() => updateStatus(order.id, 'ready')} className="w-full bg-blue-100 hover:bg-blue-200 text-blue-800 text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center">
+              <CheckCircle2 size={14} className="mr-1.5" /> Finish & Assemble
+            </button>
+          )}
+          {status === 'ready' && (
+            <button onClick={() => updateStatus(order.id, 'shipped')} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center shadow-sm">
+              <ArrowRight size={14} className="mr-1.5" /> Mark Shipped
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const newOrders = activeOrders.filter(r => !r.fulfillmentStatus || r.fulfillmentStatus === 'new');
+  const printingOrders = activeOrders.filter(r => r.fulfillmentStatus === 'printing');
+  const readyOrders = activeOrders.filter(r => r.fulfillmentStatus === 'ready');
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      {/* THE SAFETY BUFFER */}
+      <div className={`rounded-3xl border p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between shadow-lg transition-all duration-500 ${activeOrders.length > 0 ? 'bg-zinc-900 text-white border-zinc-800' : (finishedBuffer >= targetBuffer ? 'bg-emerald-50 border-emerald-200' : 'bg-blue-50 border-blue-200')}`}>
+        <div className="flex items-center mb-4 sm:mb-0">
+          <div className={`p-4 rounded-full mr-5 ${activeOrders.length > 0 ? 'bg-zinc-800 text-zinc-300' : (finishedBuffer >= targetBuffer ? 'bg-emerald-200 text-emerald-700' : 'bg-blue-200 text-blue-700')}`}>
+            <ShieldCheck size={32} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">The Safety Buffer</h2>
+            <p className={`text-sm font-medium mt-1 ${activeOrders.length > 0 ? 'text-zinc-400' : 'text-zinc-600'}`}>
+              {activeOrders.length > 0 
+                ? `${activeOrders.length} active orders pending. Fulfill these before printing for stock.` 
+                : (finishedBuffer >= targetBuffer 
+                  ? `Buffer is full. Your 72-hour window is completely secured.` 
+                  : `Printers are idle. Print ${targetBuffer - finishedBuffer} more units to secure your weekend.`)}
+            </p>
+          </div>
+        </div>
+        
+        <div className="flex items-center space-x-6 bg-white/10 p-3 rounded-2xl backdrop-blur-sm border border-black/5">
+          <div className="flex flex-col items-center">
+            <span className={`text-[10px] font-bold uppercase tracking-widest mb-2 ${activeOrders.length > 0 ? 'text-zinc-400' : 'text-zinc-500'}`}>Target</span>
+            <div className="flex items-center space-x-2">
+              <button onClick={() => handleUpdateSettings({...appSettings, targetBuffer: Math.max(0, targetBuffer - 1)})} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>-</button>
+              <span className={`text-2xl font-bold w-8 text-center ${activeOrders.length > 0 ? 'text-white' : 'text-zinc-900'}`}>{targetBuffer}</span>
+              <button onClick={() => handleUpdateSettings({...appSettings, targetBuffer: targetBuffer + 1})} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>+</button>
+            </div>
+          </div>
+          <div className={`w-px h-12 ${activeOrders.length > 0 ? 'bg-zinc-700' : 'bg-zinc-200'}`}></div>
+          <div className="flex flex-col items-center">
+            <span className={`text-[10px] font-bold uppercase tracking-widest mb-2 ${activeOrders.length > 0 ? 'text-zinc-400' : 'text-zinc-500'}`}>On Shelf</span>
+            <div className="flex items-center space-x-2">
+              <button onClick={() => adjustBuffer(-1)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>-</button>
+              <span className={`text-2xl font-bold w-8 text-center ${activeOrders.length > 0 ? 'text-white' : 'text-zinc-900'}`}>{finishedBuffer}</span>
+              <button onClick={() => adjustBuffer(1)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* FULFILLMENT KANBAN */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* Column 1: To Print */}
+        <div className="bg-zinc-50/80 backdrop-blur-sm rounded-3xl border border-zinc-200/60 p-5 flex flex-col h-full">
+          <div className="flex justify-between items-center mb-5 px-1">
+            <h3 className="font-bold text-zinc-900 flex items-center"><Inbox size={16} className="mr-2 text-zinc-400"/> To Print</h3>
+            <span className="bg-zinc-200 text-zinc-700 text-xs font-bold px-2.5 py-1 rounded-full">{newOrders.length}</span>
+          </div>
+          <div className="flex-1 space-y-4">
+            {newOrders.map(order => <OrderCard key={order.id} order={order} status="new" />)}
+            {newOrders.length === 0 && <div className="text-center py-10 text-zinc-400 text-sm font-medium border-2 border-dashed border-zinc-200 rounded-2xl">No pending orders.</div>}
+          </div>
+        </div>
+
+        {/* Column 2: Printing */}
+        <div className="bg-blue-50/50 backdrop-blur-sm rounded-3xl border border-blue-100/60 p-5 flex flex-col h-full">
+          <div className="flex justify-between items-center mb-5 px-1">
+            <h3 className="font-bold text-blue-900 flex items-center"><Settings size={16} className="mr-2 text-blue-500 animate-[spin_4s_linear_infinite]"/> Printing</h3>
+            <span className="bg-blue-200 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">{printingOrders.length}</span>
+          </div>
+          <div className="flex-1 space-y-4">
+            {printingOrders.map(order => <OrderCard key={order.id} order={order} status="printing" />)}
+            {printingOrders.length === 0 && <div className="text-center py-10 text-blue-300 text-sm font-medium border-2 border-dashed border-blue-100 rounded-2xl">Printers are idle.</div>}
+          </div>
+        </div>
+
+        {/* Column 3: Ready to Ship */}
+        <div className="bg-emerald-50/50 backdrop-blur-sm rounded-3xl border border-emerald-100/60 p-5 flex flex-col h-full">
+          <div className="flex justify-between items-center mb-5 px-1">
+            <h3 className="font-bold text-emerald-900 flex items-center"><Package size={16} className="mr-2 text-emerald-500"/> Assembly / Pack</h3>
+            <span className="bg-emerald-200 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">{readyOrders.length}</span>
+          </div>
+          <div className="flex-1 space-y-4">
+            {readyOrders.map(order => <OrderCard key={order.id} order={order} status="ready" />)}
+            {readyOrders.length === 0 && <div className="text-center py-10 text-emerald-300 text-sm font-medium border-2 border-dashed border-emerald-100 rounded-2xl">Nothing waiting to pack.</div>}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 function QuickExpenseModal({ onClose, onAdd, uploadReceipt }) {
   const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Supplies', amount: '' });
   const [file, setFile] = useState(null);
@@ -704,11 +908,11 @@ function QuickExpenseModal({ onClose, onAdd, uploadReceipt }) {
             <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
           </div>
           <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl">
-            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Attach Vault Receipt</label>
+            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Attach Receipt</label>
             <input type="file" accept="image/*,application/pdf" onChange={e=>setFile(e.target.files[0])} className="w-full text-sm font-medium text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:uppercase file:tracking-wider file:bg-zinc-200 file:text-zinc-700 hover:file:bg-zinc-300 transition-colors cursor-pointer" />
           </div>
           <button type="submit" disabled={isUploading} className="w-full bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-400 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)] hover:-translate-y-0.5 flex justify-center items-center">
-            {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Vault...</> : "Save Expense"}
+            {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Receipt...</> : "Save Expense"}
           </button>
         </form>
       </div>
@@ -772,22 +976,6 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
 
   const maxBarValue = Math.max(10, ...monthlyData.map(d => Math.max(d.rev, d.exp)));
 
-  const categoryData = useMemo(() => {
-    const totals = {}; let grandTotal = 0;
-    expenses.forEach(e => {
-      const amt = Number(e.amount || 0);
-      totals[e.category] = (totals[e.category] || 0) + amt;
-      grandTotal += amt;
-    });
-    const colors = { 'Supplies': '#3b82f6', 'Advertising': '#f59e0b', 'Travel': '#10b981', 'Equipment': '#8b5cf6', 'Office': '#ef4444' };
-    let currentOffset = 0;
-    return Object.keys(totals).map(cat => {
-      const pct = grandTotal > 0 ? (totals[cat] / grandTotal) * 100 : 0;
-      const offset = currentOffset; currentOffset += pct;
-      return { category: cat, amount: totals[cat], pct, offset, color: colors[cat] || '#e2e8f0' };
-    }).sort((a, b) => b.amount - a.amount);
-  }, [expenses]);
-
   const { stateData, maxStateRevenue } = useMemo(() => {
     const stateRevenues = {};
     let maxRev = 0;
@@ -814,7 +1002,6 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
     return arr;
   }, []);
 
-  // --- DAY OF WEEK DEMAND ANALYSIS ---
   const { dayOfWeekData, maxDayUnits, bestDay } = useMemo(() => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const counts = [0, 0, 0, 0, 0, 0, 0];
@@ -850,7 +1037,6 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
     return { dayOfWeekData: parsedData, maxDayUnits: maxUnits, bestDay: best };
   }, [revenues, demandTimeframe]);
 
-  // --- APEX AI FORECASTING (Einstein) ---
   const forecastData = useMemo(() => {
     const now = new Date();
     const thirtyDaysAgo = new Date(new Date().setDate(now.getDate() - 30)).toISOString().split('T')[0];
@@ -873,7 +1059,6 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
     return { current30Rev, prev30Rev, projectedNext30Rev, projectedNext30Units, momGrowth };
   }, [revenues]);
 
-  // --- CAC VS LTV ENGINE ---
   const cacData = useMemo(() => {
     const expAdSpend = expenses.filter(e => e.category === 'Advertising').reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const revAdSpend = revenues.reduce((sum, r) => sum + Number(r.ad || 0), 0);
@@ -1407,7 +1592,7 @@ function DashboardCard({ title, amount, subtitle, color, isNegative, highlight, 
   return (
     <div className={`bg-white/80 backdrop-blur-md rounded-3xl p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${highlight ? 'ring-1 ring-zinc-200/60' : 'border border-zinc-100'}`}>
       <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{title}</h3>
-      <div className={`text-3xl sm:text-4xl font-bold tracking-tighter mt-3 ${colorMap[color]}`}>
+      <div className={`text-3xl sm:text-4xl font-bold tracking-tighter mt-3 ${colorMap[color] || 'text-zinc-900'}`}>
         {isNegative && amount > 0 ? '-' : ''}
         <AnimatedNumber value={amount} formatCurrency={formatCurrency} />
       </div>
@@ -1459,7 +1644,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       const parsed = parseCSV(text);
       let headerIdx = 0;
       
-      // Find the header row (Financial or Standard Format)
       while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].some(h => h && (h.includes('Order Number') || h.includes('Order number'))))) {
         headerIdx++;
       }
@@ -1472,7 +1656,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       const headers = parsed[headerIdx];
       const findHeader = (str) => headers.findIndex(h => h && h.toLowerCase().includes(str.toLowerCase()));
       
-      // Identify all possible columns
       const dateIdx = findHeader('Transaction creation date') > -1 ? findHeader('Transaction creation date') : findHeader('Sale Date'); 
       const orderIdx = findHeader('Order number');
       const typeIdx = findHeader('Type'); 
@@ -1489,7 +1672,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       const netIdx = findHeader('Net amount');
       const descColIdx = findHeader('Description');
 
-      // Dynamically find ALL fee columns, explicitly targeting Final Value Fees
       const feeIndices = new Set();
       headers.forEach((h, idx) => {
         const headerStr = (h || '').toLowerCase();
@@ -1498,7 +1680,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         }
       });
       
-      // Explicit fallbacks for known exact columns just to be 100% certain
       const specificFeeCols = ['Final Value Fee - variable', 'Final Value Fee - fixed', 'Regulatory operating fee', 'International fee'];
       specificFeeCols.forEach(feeName => {
          const idx = findHeader(feeName);
@@ -1507,7 +1688,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
 
       const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
       
-      // FINANCIAL AGGREGATOR MAP
       const ordersMap = new Map();
 
       for (let i = headerIdx + 1; i < parsed.length; i++) {
@@ -1515,7 +1695,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         if (row.length < headers.length) continue;
         
         let orderNum = row[orderIdx] ? row[orderIdx].trim() : '';
-        // Handle unattached shipping labels and fees
         if (!orderNum || orderNum.startsWith('--')) {
            const refIdx = findHeader('Reference ID');
            let refId = refIdx > -1 ? row[refIdx] : '';
@@ -1524,7 +1703,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         }
 
         const type = typeIdx > -1 ? (row[typeIdx] || '').toLowerCase() : 'order';
-        if (type === 'payout' || type === 'transfer') continue; // Ignore bank transfers
+        if (type === 'payout' || type === 'transfer') continue; 
         
         if (!ordersMap.has(orderNum)) {
           ordersMap.set(orderNum, {
@@ -1535,7 +1714,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         
         const rec = ordersMap.get(orderNum);
         
-        // Bulletproof Number Parser (Handles accounting formats like "(5.99)", missing signs, and dashes)
         const cleanNum = (val) => {
           if (!val) return 0;
           if (typeof val === 'number') return val;
@@ -1554,28 +1732,23 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         let rowQty = qtyIdx > -1 ? cleanNum(row[qtyIdx]) : 0;
         
         let sumFees = 0;
-        // Absolute value ensures negative/positive fees stack correctly as a positive total expense
         feeIndices.forEach(idx => sumFees += Math.abs(cleanNum(row[idx])));
 
         const desc = descColIdx > -1 ? (row[descColIdx] || '').trim() : '';
         const title = titleIdx > -1 ? (row[titleIdx] || '').trim() : '';
         
-        // Ensure eBay's empty "--" cells don't lock in as descriptions
         const cleanTitle = title === '--' ? '' : title;
         const cleanDesc = desc === '--' ? '' : desc;
 
-        // Synthesize true gross if this is the financial report format 
-        // (eBay excludes tax from Gross in financial reports, but our UI expects it for absolute Total Paid)
         let isFinancialGross = headers[grossIdx] && headers[grossIdx].toLowerCase() === 'gross transaction amount';
         let adjustedGross = isFinancialGross ? rawGross + rawTax : rawGross;
 
-        // 1. Populate Core Information
         if (type.includes('order') || type === 'sale' || !rec.date) {
           if (row[dateIdx] && !rec.date && row[dateIdx] !== '--') {
             const rawDate = row[dateIdx];
             const d = new Date(rawDate);
             if (!isNaN(d.getTime())) {
-               rec.date = d.toLocaleDateString('en-CA'); // strict YYYY-MM-DD
+               rec.date = d.toLocaleDateString('en-CA');
             } else {
                const parts = rawDate.split('-');
                if (parts.length === 3) rec.date = `20${parts[2]}-${months[parts[0]] || '01'}-${parts[1].padStart(2, '0')}`;
@@ -1591,7 +1764,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
           if (rowQty > 0 && (type.includes('order') || type === 'sale')) rec.qty += rowQty;
         }
 
-        // 2. Aggregate Financial Splits
         if (type.includes('shipping label')) {
           rec.shipping += Math.abs(rawNet || rawGross);
           if(!rec.desc || rec.desc === '--') rec.desc = 'Shipping Label';
@@ -1599,14 +1771,13 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
           rec.ad += Math.abs(rawNet || sumFees || rawGross);
           if(!rec.desc || rec.desc === '--') rec.desc = 'Ad Fee / Other';
         } else if (type.includes('refund')) {
-          rec.gross += adjustedGross; // rawGross is negative on refunds, so this properly subtracts
+          rec.gross += adjustedGross; 
           rec.salesTax -= Math.abs(rawTax);
-          rec.ebay -= Math.abs(sumFees); // Fees credited back, reduce expenses
+          rec.ebay -= Math.abs(sumFees); 
         } else {
-          // Standard Order
           rec.gross += adjustedGross;
           rec.salesTax += Math.abs(rawTax); 
-          rec.ebay += Math.abs(sumFees); // Fees are usually negative in CSV, we log them as positive expenses
+          rec.ebay += Math.abs(sumFees); 
           if (!rec.desc || rec.desc === 'Shipping Label' || rec.desc === 'Ad Fee / Other' || rec.desc === '--') {
              rec.desc = cleanTitle || cleanDesc || 'eBay Sale';
           }
@@ -1617,7 +1788,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       let unchangedCount = 0;
       let updatedCount = 0;
 
-      // Smart Sync Engine
       let index = 0;
       for (const [orderNum, rec] of ordersMap.entries()) {
         const existingRecord = revenues.find(r => r.orderNum === orderNum);
@@ -1887,7 +2057,7 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency, u
   return (
     <div className="space-y-8 animate-in fade-in">
       <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
-        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Expense to Vault</h2>
+        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Expense</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-5 gap-4">
           <input type="date" className={`${inlineInputStyle} col-span-1`} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
           <input type="text" placeholder="Description" className={`${inlineInputStyle} col-span-1`} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
@@ -1895,7 +2065,7 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency, u
           <input type="number" step="0.01" placeholder="Amount ($)" className={`${inlineInputStyle} col-span-1`} value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
           <input type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files[0])} className="col-span-1 text-[10px] uppercase font-bold tracking-wider text-zinc-500 file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:uppercase file:tracking-wider file:font-bold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 transition-colors cursor-pointer" />
           <button type="submit" disabled={isUploading} className="sm:col-span-5 bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-300 text-white font-semibold py-3.5 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2 shadow-md">
-             {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading to Vault...</> : <><Plus size={18} className="mr-2" /> Save to Ledger & Vault</>}
+             {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Receipt...</> : <><Plus size={18} className="mr-2" /> Save Expense</>}
           </button>
         </form>
       </div>
@@ -1919,7 +2089,7 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency, u
             </thead>
             <tbody className="divide-y divide-zinc-50">
               {sortedExpenses.length === 0 ? (
-                <EmptyState icon={Receipt} title="Your vault is empty" message="Log your first expense to activate tax tracking and secure digital receipts." colSpan="6" />
+                <EmptyState icon={Receipt} title="No expenses logged" message="Log your first expense to activate tax tracking and secure digital receipts." colSpan="6" />
               ) : sortedExpenses.map(e => (
                 editingId === e.id ? (
                   <tr key={e.id} className="bg-blue-50/30">
