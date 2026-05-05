@@ -705,8 +705,9 @@ function ProductionBoard({ revenues, appSettings, handleUpdateSettings, handleUp
     const cutoff = fiveDaysAgo.toISOString().split('T')[0];
 
     return revenues.filter(r => {
-      // If it explicitly has a status and isn't shipped, keep it
-      if (r.fulfillmentStatus && r.fulfillmentStatus !== 'shipped') return true;
+      // If it explicitly has a status and isn't shipped or archived, keep it
+      if (r.fulfillmentStatus === 'shipped' || r.fulfillmentStatus === 'archived') return false;
+      if (r.fulfillmentStatus) return true;
       // If it doesn't have a status but is brand new, put it on the board
       if (!r.fulfillmentStatus && r.date >= cutoff && Number(r.qty) > 0) return true;
       return false;
@@ -735,53 +736,86 @@ function ProductionBoard({ revenues, appSettings, handleUpdateSettings, handleUp
     handleUpdateSettings({ ...appSettings, finishedBuffer: newTotal });
   };
 
-  const getUrgency = (dateStr) => {
+  const getUrgency = (dateStr, totalPrintHours) => {
     const orderDate = new Date(dateStr);
     const diffHours = Math.floor((new Date() - orderDate) / (1000 * 60 * 60));
     const hoursLeft = 72 - diffHours;
+    const slack = hoursLeft - totalPrintHours;
     
     if (hoursLeft < 0) return { text: `${Math.abs(hoursLeft)}h OVERDUE`, color: 'text-rose-700 bg-rose-100 border-rose-300 shadow-[0_0_10px_rgba(225,29,72,0.4)] animate-pulse' };
+    if (slack < 0) return { text: `${hoursLeft}h LEFT (LATE RISK)`, color: 'text-rose-700 bg-rose-100 border-rose-300' };
     if (hoursLeft <= 24) return { text: `${hoursLeft}h LEFT`, color: 'text-amber-700 bg-amber-100 border-amber-300' };
     return { text: `${hoursLeft}h left`, color: 'text-blue-700 bg-blue-100 border-blue-200' };
   };
 
   const OrderCard = ({ order, status }) => {
-    const urgency = getUrgency(order.date);
-    const isOverdue = urgency.text.includes('OVERDUE');
+    const qty = Number(order.qty || 1);
+    const baseHours = qty * 12.6;
+    const coverHours = qty * 4.4;
+    const totalHours = baseHours + coverHours;
+    
+    const urgency = getUrgency(order.date, totalHours);
+    const isOverdue = urgency.text.includes('OVERDUE') || urgency.text.includes('LATE RISK');
+
     return (
-      <div className={`bg-white rounded-2xl border p-4 shadow-sm hover:shadow-md transition-all group ${isOverdue ? 'border-rose-200' : 'border-zinc-200'}`}>
-        <div className="flex justify-between items-start mb-3">
+      <div className={`bg-white rounded-2xl border p-4 shadow-sm hover:shadow-md transition-all group relative ${isOverdue ? 'border-rose-200' : 'border-zinc-200'}`}>
+        <button onClick={() => updateStatus(order.id, 'archived')} className="absolute top-3 right-3 text-zinc-300 hover:text-rose-500 bg-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-zinc-100 hover:border-rose-200 z-10" title="Remove from Queue">
+          <X size={14} />
+        </button>
+        
+        <div className="flex justify-between items-start mb-2 pr-8">
           <div>
             <div className="font-bold text-sm text-zinc-900 line-clamp-1">{order.desc}</div>
-            <div className="text-[10px] font-mono text-zinc-500 mt-0.5">{order.orderNum || 'Manual Sale'} • Qty: {order.qty}</div>
+            <div className="text-[10px] font-mono text-zinc-500 mt-0.5">{order.orderNum || 'Manual Sale'} • Qty: {qty}</div>
           </div>
-          <div className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border ${urgency.color} whitespace-nowrap ml-2`}>
+        </div>
+        
+        <div className="flex flex-wrap gap-2 mt-2.5">
+          <div className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border ${urgency.color} whitespace-nowrap`}>
             {urgency.text}
           </div>
+          <div className="text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border border-zinc-200 bg-zinc-50 text-zinc-600 whitespace-nowrap flex items-center">
+            <Clock size={10} className="mr-1" /> {totalHours.toFixed(1)}h Print
+          </div>
+        </div>
+
+        <div className="mt-3 bg-zinc-50/80 rounded-lg p-2.5 text-[10px] text-zinc-500 border border-zinc-100 flex flex-col gap-1.5">
+          <div className="flex justify-between items-center"><span className="flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-zinc-400 mr-1.5"></span>Bases ({qty})</span> <span className="font-semibold text-zinc-700">{baseHours.toFixed(1)}h</span></div>
+          <div className="flex justify-between items-center"><span className="flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-zinc-300 mr-1.5"></span>Covers ({qty})</span> <span className="font-semibold text-zinc-700">{coverHours.toFixed(1)}h</span></div>
         </div>
         
         <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-zinc-100">
           {(!status || status === 'new') && (
             <>
-              {finishedBuffer >= Number(order.qty || 1) && (
+              {finishedBuffer >= qty && (
                 <button onClick={() => pullFromBuffer(order)} className="w-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center">
                   <PackageOpen size={14} className="mr-1.5" /> Pull from Buffer
                 </button>
               )}
-              <button onClick={() => updateStatus(order.id, 'printing')} className="w-full bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center">
+              <button onClick={() => updateStatus(order.id, 'printing')} className="w-full bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center shadow-sm">
                 <Play size={14} className="mr-1.5" /> Start Printing
               </button>
             </>
           )}
           {status === 'printing' && (
-            <button onClick={() => updateStatus(order.id, 'ready')} className="w-full bg-blue-100 hover:bg-blue-200 text-blue-800 text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center">
-              <CheckCircle2 size={14} className="mr-1.5" /> Finish & Assemble
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => updateStatus(order.id, 'new')} className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-3 py-2 rounded-lg transition-colors shadow-sm" title="Revert to To Print">
+                <ArrowRightLeft size={14} />
+              </button>
+              <button onClick={() => updateStatus(order.id, 'ready')} className="flex-1 bg-blue-100 hover:bg-blue-200 text-blue-800 text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center shadow-sm">
+                <CheckCircle2 size={14} className="mr-1.5" /> Finish & Assemble
+              </button>
+            </div>
           )}
           {status === 'ready' && (
-            <button onClick={() => updateStatus(order.id, 'shipped')} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center shadow-sm">
-              <ArrowRight size={14} className="mr-1.5" /> Mark Shipped
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => updateStatus(order.id, 'printing')} className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-3 py-2 rounded-lg transition-colors shadow-sm" title="Revert to Printing">
+                <ArrowRightLeft size={14} />
+              </button>
+              <button onClick={() => updateStatus(order.id, 'shipped')} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center shadow-sm">
+                <ArrowRight size={14} className="mr-1.5" /> Mark Shipped
+              </button>
+            </div>
           )}
         </div>
       </div>
