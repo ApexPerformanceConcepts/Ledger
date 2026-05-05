@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
-  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X, ArrowUpDown, ChevronUp, ChevronDown, PieChart, BarChart3, Printer, Zap, ArrowRightLeft, ShieldCheck, Target, Package, AlertTriangle, Image as ImageIcon, Map as MapIcon, Loader2, Inbox, PackageOpen, TrendingUp, Sparkles, ShoppingCart
+  LayoutDashboard, DollarSign, Receipt, Wallet, Car, Settings, Plus, Trash2, ClipboardList, Edit2, Check, Download, Upload, X, ArrowUpDown, ChevronUp, ChevronDown, PieChart, BarChart3, Printer, Zap, ArrowRightLeft, ShieldCheck, Target, Package, AlertTriangle, Image as ImageIcon, Map as MapIcon, Loader2, Inbox, PackageOpen, TrendingUp, Sparkles, ShoppingCart, 
+  Clock, Play, CheckCircle2, ArrowRight
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
@@ -28,18 +29,34 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const getColRef = (colName) => isPreviewEnv ? collection(db, 'artifacts', appId, 'public', 'data', colName) : collection(db, colName);
 const getDocRef = (colName, docId) => isPreviewEnv ? doc(db, 'artifacts', appId, 'public', 'data', colName, docId) : doc(db, colName, docId);
 
+// --- CONSTANTS ---
+const tileMapData = [
+  { code: 'AK', c: 0, r: 0 }, { code: 'ME', c: 11, r: 0 },
+  { code: 'WA', c: 1, r: 1 }, { code: 'ID', c: 2, r: 1 }, { code: 'MT', c: 3, r: 1 }, { code: 'ND', c: 4, r: 1 }, { code: 'MN', c: 5, r: 1 }, { code: 'WI', c: 6, r: 1 }, { code: 'MI', c: 7, r: 1 }, { code: 'NY', c: 9, r: 1 }, { code: 'VT', c: 10, r: 1 }, { code: 'NH', c: 11, r: 1 },
+  { code: 'OR', c: 1, r: 2 }, { code: 'NV', c: 2, r: 2 }, { code: 'WY', c: 3, r: 2 }, { code: 'SD', c: 4, r: 2 }, { code: 'IA', c: 5, r: 2 }, { code: 'IL', c: 6, r: 2 }, { code: 'IN', c: 7, r: 2 }, { code: 'OH', c: 8, r: 2 }, { code: 'PA', c: 9, r: 2 }, { code: 'NJ', c: 10, r: 2 }, { code: 'MA', c: 11, r: 2 },
+  { code: 'CA', c: 1, r: 3 }, { code: 'UT', c: 2, r: 3 }, { code: 'CO', c: 3, r: 3 }, { code: 'NE', c: 4, r: 3 }, { code: 'MO', c: 5, r: 3 }, { code: 'KY', c: 6, r: 3 }, { code: 'WV', c: 7, r: 3 }, { code: 'VA', c: 8, r: 3 }, { code: 'MD', c: 9, r: 3 }, { code: 'CT', c: 10, r: 3 }, { code: 'RI', c: 11, r: 3 },
+  { code: 'AZ', c: 2, r: 4 }, { code: 'NM', c: 3, r: 4 }, { code: 'KS', c: 4, r: 4 }, { code: 'AR', c: 5, r: 4 }, { code: 'TN', c: 6, r: 4 }, { code: 'NC', c: 7, r: 4 }, { code: 'SC', c: 8, r: 4 }, { code: 'DE', c: 9, r: 4 }, { code: 'DC', c: 10, r: 4 },
+  { code: 'OK', c: 4, r: 5 }, { code: 'LA', c: 5, r: 5 }, { code: 'MS', c: 6, r: 5 }, { code: 'AL', c: 7, r: 5 }, { code: 'GA', c: 8, r: 5 },
+  { code: 'HI', c: 0, r: 6 }, { code: 'TX', c: 4, r: 6 }, { code: 'FL', c: 8, r: 6 }
+];
+
 // --- UX PHYSICS & MICRO-INTERACTIONS ---
 
 const AnimatedNumber = ({ value, formatCurrency, isInt = false }) => {
   const [displayValue, setDisplayValue] = useState(0);
+  const reqRef = useRef();
+  const startValueRef = useRef(0);
   
   useEffect(() => {
     let startTime;
     const duration = 1200; 
-    const startValue = displayValue;
+    const startValue = startValueRef.current;
     const endValue = Number(value) || 0;
     
-    if (startValue === endValue) return;
+    if (startValue === endValue) {
+       setDisplayValue(endValue);
+       return;
+    }
 
     const animate = (timestamp) => {
       if (!startTime) startTime = timestamp;
@@ -49,11 +66,18 @@ const AnimatedNumber = ({ value, formatCurrency, isInt = false }) => {
       
       setDisplayValue(current);
       
-      if (progress < 1) requestAnimationFrame(animate);
-      else setDisplayValue(endValue);
+      if (progress < 1) {
+        reqRef.current = requestAnimationFrame(animate);
+      } else {
+        setDisplayValue(endValue);
+        startValueRef.current = endValue;
+      }
     };
     
-    requestAnimationFrame(animate);
+    reqRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (reqRef.current) cancelAnimationFrame(reqRef.current);
+    };
   }, [value]);
 
   if (formatCurrency) return formatCurrency(displayValue);
@@ -62,7 +86,6 @@ const AnimatedNumber = ({ value, formatCurrency, isInt = false }) => {
 
 const MagneticButton = ({ children, onClick, className }) => {
   const buttonRef = useRef(null);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
 
   const handleMouseMove = (e) => {
     if (!buttonRef.current) return;
@@ -72,11 +95,15 @@ const MagneticButton = ({ children, onClick, className }) => {
     const centerY = top + height / 2;
     const x = (clientX - centerX) * 0.2; 
     const y = (clientY - centerY) * 0.2;
-    setPosition({ x, y });
+    
+    buttonRef.current.style.transform = `translate(${x}px, ${y}px)`;
+    buttonRef.current.style.transition = 'none';
   };
 
   const handleMouseLeave = () => {
-    setPosition({ x: 0, y: 0 });
+    if (!buttonRef.current) return;
+    buttonRef.current.style.transform = `translate(0px, 0px)`;
+    buttonRef.current.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
   };
 
   return (
@@ -85,10 +112,6 @@ const MagneticButton = ({ children, onClick, className }) => {
       onClick={onClick}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      style={{ 
-        transform: `translate(${position.x}px, ${position.y}px)`, 
-        transition: position.x === 0 ? 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'none' 
-      }}
       className={className}
     >
       {children}
@@ -189,6 +212,7 @@ const useSortableData = (items, defaultKey = 'date') => {
     }
     return sortableItems;
   }, [items, sortConfig]);
+  
   const requestSort = (key) => {
     let direction = 'ascending';
     if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') { direction = 'descending'; }
@@ -211,6 +235,170 @@ const SortableHeader = ({ label, sortKey, currentSort, requestSort, alignRight, 
   );
 };
 
+// --- HOISTED SUB-COMPONENTS ---
+
+const getUrgency = (dateStr, totalPrintHours) => {
+  const orderDate = new Date(dateStr);
+  const diffHours = Math.floor((new Date() - orderDate) / (1000 * 60 * 60));
+  const hoursLeft = 72 - diffHours;
+  const slack = hoursLeft - totalPrintHours;
+  
+  if (hoursLeft < 0) return { text: `${Math.abs(hoursLeft)}h OVERDUE`, color: 'text-rose-700 bg-rose-100 border-rose-300 shadow-[0_0_10px_rgba(225,29,72,0.4)] animate-pulse' };
+  if (slack < 0) return { text: `${hoursLeft}h LEFT (LATE RISK)`, color: 'text-rose-700 bg-rose-100 border-rose-300' };
+  if (hoursLeft <= 24) return { text: `${hoursLeft}h LEFT`, color: 'text-amber-700 bg-amber-100 border-amber-300' };
+  return { text: `${hoursLeft}h left`, color: 'text-blue-700 bg-blue-100 border-blue-200' };
+};
+
+const OrderCard = ({ order, status, finishedBuffer, onUpdateStatus, onPullFromBuffer }) => {
+  const qty = Number(order.qty || 1);
+  const baseHours = qty * 12.6;
+  const coverHours = qty * 4.4;
+  const totalHours = baseHours + coverHours;
+  const urgency = getUrgency(order.date, totalHours);
+  const isOverdue = urgency.text.includes('OVERDUE') || urgency.text.includes('LATE RISK');
+
+  return (
+    <div className={`bg-white rounded-2xl border p-4 shadow-sm hover:shadow-md transition-all group relative ${isOverdue ? 'border-rose-200' : 'border-zinc-200'}`}>
+      <button onClick={(e) => { e.preventDefault(); onUpdateStatus(order.id, 'archived'); }} className="absolute top-2 right-2 text-zinc-400 hover:text-rose-600 bg-white hover:bg-rose-50 p-1.5 rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all shadow-sm border border-zinc-200 z-10" title="Remove from Queue">
+        <X size={14} strokeWidth={3} />
+      </button>
+      
+      <div className="flex justify-between items-start mb-2 pr-8">
+        <div>
+          <div className="font-bold text-sm text-zinc-900 line-clamp-1">{order.desc}</div>
+          <div className="text-[10px] font-mono text-zinc-500 mt-0.5">{order.orderNum || 'Manual Sale'} • Qty: {qty}</div>
+        </div>
+      </div>
+      
+      <div className="flex flex-wrap gap-2 mt-2.5">
+        <div className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border ${urgency.color} whitespace-nowrap`}>
+          {urgency.text}
+        </div>
+        <div className="text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded border border-zinc-200 bg-zinc-50 text-zinc-600 whitespace-nowrap flex items-center">
+          <Clock size={10} className="mr-1" /> {totalHours.toFixed(1)}h Print
+        </div>
+      </div>
+
+      <div className="mt-3 bg-zinc-50/80 rounded-lg p-2.5 text-[10px] text-zinc-500 border border-zinc-100 flex flex-col gap-1.5">
+        <div className="flex justify-between items-center"><span className="flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-zinc-400 mr-1.5"></span>Bases ({qty})</span> <span className="font-semibold text-zinc-700">{baseHours.toFixed(1)}h</span></div>
+        <div className="flex justify-between items-center"><span className="flex items-center"><span className="w-1.5 h-1.5 rounded-full bg-zinc-300 mr-1.5"></span>Covers ({qty})</span> <span className="font-semibold text-zinc-700">{coverHours.toFixed(1)}h</span></div>
+      </div>
+      
+      <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-zinc-100">
+        {(!status || status === 'new') && (
+          <>
+            {finishedBuffer >= qty && (
+              <button onClick={() => onPullFromBuffer(order)} className="w-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center">
+                <PackageOpen size={14} className="mr-1.5" /> Pull from Buffer
+              </button>
+            )}
+            <button onClick={() => onUpdateStatus(order.id, 'printing')} className="w-full bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center shadow-sm">
+              <Play size={14} className="mr-1.5" /> Start Printing
+            </button>
+          </>
+        )}
+        {status === 'printing' && (
+          <div className="flex gap-2">
+            <button onClick={() => onUpdateStatus(order.id, 'new')} className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-3 py-2 rounded-lg transition-colors shadow-sm" title="Revert to To Print">
+              <ArrowRightLeft size={14} />
+            </button>
+            <button onClick={() => onUpdateStatus(order.id, 'ready')} className="flex-1 bg-blue-100 hover:bg-blue-200 text-blue-800 text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center shadow-sm">
+              <CheckCircle2 size={14} className="mr-1.5" /> Finish & Assemble
+            </button>
+          </div>
+        )}
+        {status === 'ready' && (
+          <div className="flex gap-2">
+            <button onClick={() => onUpdateStatus(order.id, 'printing')} className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 px-3 py-2 rounded-lg transition-colors shadow-sm" title="Revert to Printing">
+              <ArrowRightLeft size={14} />
+            </button>
+            <button onClick={() => onUpdateStatus(order.id, 'shipped')} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-lg transition-colors flex justify-center items-center shadow-sm">
+              <ArrowRight size={14} className="mr-1.5" /> Mark Shipped
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const StockCard = ({ title, materialName, amount, unit, isWarning, daysRemaining, velocity, onAdjust }) => {
+  const cleanAmount = Number.isInteger(amount) ? amount : Number(Number(amount).toFixed(2));
+  const [isEditing, setIsEditing] = useState(false);
+  const [editVal, setEditVal] = useState(cleanAmount);
+
+  useEffect(() => {
+    if (!isEditing) setEditVal(Number.isInteger(amount) ? amount : Number(Number(amount).toFixed(2)));
+  }, [amount, isEditing]);
+
+  const handleSave = () => {
+    const diff = Number(editVal) - cleanAmount;
+    if (diff !== 0) {
+      onAdjust(materialName, diff);
+    }
+    setIsEditing(false);
+  };
+
+  return (
+    <div className={`rounded-3xl border p-6 flex flex-col justify-center transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] group ${isWarning ? 'bg-amber-50/50 border-amber-200/60' : 'bg-white/80 backdrop-blur-md border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]'}`}>
+      <div className="flex justify-between items-start">
+        <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center">
+          {title} {isWarning && <AlertTriangle size={14} className="text-amber-500 ml-1" />}
+        </h3>
+        {!isEditing && (
+          <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" title="Audit/Adjust Inventory">
+            <Edit2 size={14} />
+          </button>
+        )}
+      </div>
+      
+      {isEditing ? (
+        <div className="mt-3 flex items-center space-x-2 animate-in fade-in zoom-in-95">
+          <input type="number" step="any" className="w-20 sm:w-24 border border-zinc-300 rounded-lg px-2 py-1.5 text-lg font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white" value={editVal} onChange={e => setEditVal(e.target.value)} autoFocus />
+          <button onClick={handleSave} className="bg-emerald-600 text-white p-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"><Check size={16} /></button>
+          <button onClick={() => setIsEditing(false)} className="bg-zinc-100 text-zinc-500 p-2 rounded-lg hover:bg-zinc-200 transition-colors"><X size={16} /></button>
+        </div>
+      ) : (
+        <div className={`text-3xl font-bold tracking-tighter mt-3 ${isWarning ? 'text-amber-700' : 'text-zinc-900'}`}>
+          {cleanAmount.toLocaleString()} <span className="text-sm font-medium tracking-normal text-zinc-400 ml-1">{unit}</span>
+        </div>
+      )}
+
+      {velocity > 0 && !isEditing && (
+        <div className={`text-[11px] mt-3 font-bold uppercase tracking-wider ${daysRemaining <= 7 ? 'text-amber-600' : 'text-zinc-400'}`}>
+          {daysRemaining > 0 && daysRemaining !== Infinity ? `~${daysRemaining} days remaining` : (daysRemaining === 0 ? 'Out of stock' : 'Adequate supply')}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const PreviewRow = ({ r, formatCurrency, onUpdateField }) => {
+  const [localForm, setLocalForm] = useState({ ebay: r.ebay, ad: r.ad, shipping: r.shipping });
+  const handleBlur = (field) => { onUpdateField(r.id, field, localForm[field]); };
+
+  return (
+    <tr className="hover:bg-zinc-50/50">
+      <td className="px-6 py-3 font-medium text-zinc-500">{r.date}</td>
+      <td className="px-6 py-3 font-mono text-[11px] text-zinc-500 flex items-center">
+        {r.isUpdate ? (
+          <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded mr-2 font-bold text-[9px] shadow-sm">OVERWRITE</span>
+        ) : (
+          <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded mr-2 font-bold text-[9px] shadow-sm">NEW</span>
+        )}
+        {r.orderNum}
+      </td>
+      <td className="px-6 py-3 truncate max-w-xs font-medium text-zinc-900" title={r.desc}>{r.desc}</td>
+      <td className="px-6 py-3 text-center font-bold text-zinc-900">{r.qty}</td>
+      <td className="px-6 py-3 text-right font-semibold">{formatCurrency(r.gross)}</td>
+      <td className="px-6 py-3 text-right font-medium text-zinc-500">{formatCurrency(r.salesTax)}</td>
+      <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={localForm.ebay} onChange={e => setLocalForm({...localForm, ebay: e.target.value})} onBlur={() => handleBlur('ebay')} /></td>
+      <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={localForm.ad} onChange={e => setLocalForm({...localForm, ad: e.target.value})} onBlur={() => handleBlur('ad')}/></td>
+      <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={localForm.shipping} onChange={e => setLocalForm({...localForm, shipping: e.target.value})} onBlur={() => handleBlur('shipping')}/></td>
+    </tr>
+  );
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [user, setUser] = useState(null);
@@ -225,7 +413,12 @@ export default function App() {
   const [restocks, setRestocks] = useState([]);
   const [machines, setMachines] = useState([]);
   
-  const [appSettings, setAppSettings] = useState({ initialInvestment: 1219.00 });
+  const [appSettings, setAppSettings] = useState({ 
+    initialInvestment: 1219.00,
+    finishedBuffer: 0,
+    targetBuffer: 6
+  });
+  
   const [cogs, setCogs] = useState({
     blackSpoolCost: 16.99, blackGramsUsed: 533, 
     whiteSpoolCost: 16.99, whiteGramsUsed: 11,
@@ -279,7 +472,13 @@ export default function App() {
         }));
       } 
     }, console.error);
-    const unsubSettings = onSnapshot(getDocRef('settings', 'app'), (docSnap) => { if (docSnap.exists()) setAppSettings(docSnap.data()); }, console.error);
+    
+    const unsubSettings = onSnapshot(getDocRef('settings', 'app'), (docSnap) => { 
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setAppSettings(prev => ({ ...prev, ...data })); 
+      } 
+    }, console.error);
 
     return () => { unsubRevs(); unsubExps(); unsubEqs(); unsubMiles(); unsubRestocks(); unsubMachines(); unsubCogs(); unsubSettings(); };
   }, [user]);
@@ -329,10 +528,10 @@ export default function App() {
   };
 
   // --- CALCULATIONS & PREDICTIVE SUPPLY CHAIN ---
-  const blackPetgCostPerGram = (cogs.blackSpoolCost || 16.99) / 1000;
-  const whitePetgCostPerGram = (cogs.whiteSpoolCost || 16.99) / 1000;
+  const blackPetgCostPerGram = useMemo(() => (cogs.blackSpoolCost || 16.99) / 1000, [cogs.blackSpoolCost]);
+  const whitePetgCostPerGram = useMemo(() => (cogs.whiteSpoolCost || 16.99) / 1000, [cogs.whiteSpoolCost]);
   
-  const costPerTrainer = 
+  const costPerTrainer = useMemo(() => (
     (blackPetgCostPerGram * (cogs.blackGramsUsed || 533)) + 
     (whitePetgCostPerGram * (cogs.whiteGramsUsed || 11)) + 
     ((cogs.concreteCost || 0.15) * (cogs.lbsUsed || 5)) + 
@@ -340,7 +539,8 @@ export default function App() {
     Number(cogs.bubbleWrapCost || 0) + 
     Number(cogs.screwsCost || 0) + 
     Number(cogs.insertsCost || 0) + 
-    Number(cogs.washersCost || 0);
+    Number(cogs.washersCost || 0)
+  ), [blackPetgCostPerGram, whitePetgCostPerGram, cogs]);
 
   const totalUnitsSold = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.qty || 1), 0), [revenues]);
   const totalGrossRevenue = useMemo(() => revenues.reduce((sum, r) => sum + Number(r.gross || 0), 0), [revenues]);
@@ -358,6 +558,7 @@ export default function App() {
       return sum + (net - (costPerTrainer * Number(r.qty || 1)));
     }, 0);
   }, [revenues, costPerTrainer]);
+  
   const avgProfitPerUnit = totalUnitsSold > 0 ? totalTrueProfit / totalUnitsSold : 0;
 
   const drawsRecoup = useMemo(() => equities.filter(e => e.category === 'Recoup Investment' || !e.category).reduce((sum, e) => sum + Number(e.amount || 0), 0), [equities]);
@@ -378,13 +579,14 @@ export default function App() {
   // --- WAREHOUSE & PREDICTIVE ENGINE ---
   const INVENTORY_START_DATE = '2026-04-29';
   const inventoryUnitsSold = useMemo(() => revenues.filter(r => r.date >= INVENTORY_START_DATE).reduce((sum, r) => sum + Number(r.qty || 1), 0), [revenues]);
+  const totalManufacturedUnits = inventoryUnitsSold + Number(appSettings.finishedBuffer || 0);
 
-  const fourteenDaysAgoStr = useMemo(() => {
+  const recentSales = useMemo(() => {
     const d = new Date(); d.setDate(d.getDate() - 14);
-    return d.toISOString().split('T')[0];
-  }, []);
+    const cutoffStr = d.toISOString().split('T')[0];
+    return revenues.filter(r => r.date >= cutoffStr);
+  }, [revenues]);
   
-  const recentSales = useMemo(() => revenues.filter(r => r.date >= fourteenDaysAgoStr), [revenues, fourteenDaysAgoStr]);
   const recentUnitsSold = useMemo(() => recentSales.reduce((sum, r) => sum + Number(r.qty || 1), 0), [recentSales]);
   const dailySalesVelocity = recentUnitsSold / 14;
 
@@ -393,15 +595,15 @@ export default function App() {
   }, [restocks]);
 
   const currentStock = useMemo(() => ({
-    blackPetg: ((restockTotals['Black PETG (grams)'] || 0) + (restockTotals['PETG (grams)'] || 0)) - (inventoryUnitsSold * (cogs.blackGramsUsed || 533)),
-    whitePetg: (restockTotals['White PETG (grams)'] || 0) - (inventoryUnitsSold * (cogs.whiteGramsUsed || 11)),
-    concrete: (restockTotals['Concrete (lbs)'] || 0) - (inventoryUnitsSold * (cogs.lbsUsed || 5)),
-    boxes: (restockTotals['Boxes (qty)'] || 0) - inventoryUnitsSold,
-    wrap: (restockTotals['Bubble Wrap (qty)'] || 0) - inventoryUnitsSold,
-    screws: (restockTotals['Screws (sets)'] || 0) - inventoryUnitsSold,
-    inserts: (restockTotals['Inserts (sets)'] || 0) - inventoryUnitsSold,
-    washers: (restockTotals['Washers (sets)'] || 0) - inventoryUnitsSold,
-  }), [restockTotals, inventoryUnitsSold, cogs]);
+    blackPetg: ((restockTotals['Black PETG (grams)'] || 0) + (restockTotals['PETG (grams)'] || 0)) - (totalManufacturedUnits * (cogs.blackGramsUsed || 533)),
+    whitePetg: (restockTotals['White PETG (grams)'] || 0) - (totalManufacturedUnits * (cogs.whiteGramsUsed || 11)),
+    concrete: (restockTotals['Concrete (lbs)'] || 0) - (totalManufacturedUnits * (cogs.lbsUsed || 5)),
+    boxes: (restockTotals['Boxes (qty)'] || 0) - totalManufacturedUnits,
+    wrap: (restockTotals['Bubble Wrap (qty)'] || 0) - totalManufacturedUnits,
+    screws: (restockTotals['Screws (sets)'] || 0) - totalManufacturedUnits,
+    inserts: (restockTotals['Inserts (sets)'] || 0) - totalManufacturedUnits,
+    washers: (restockTotals['Washers (sets)'] || 0) - totalManufacturedUnits,
+  }), [restockTotals, totalManufacturedUnits, cogs]);
 
   const buildableUnits = useMemo(() => Math.floor(Math.min(
     cogs.blackGramsUsed > 0 ? Math.max(0, currentStock.blackPetg / cogs.blackGramsUsed) : Infinity,
@@ -488,10 +690,11 @@ export default function App() {
             <div className="flex gap-1 bg-zinc-100/50 p-1.5 rounded-full border border-zinc-200/50 w-max mb-1">
               <TabButton id="dashboard" icon={LayoutDashboard} label="Command Center" />
               <TabButton id="analytics" icon={MapIcon} label="Analytics" />
+              <TabButton id="production" icon={Zap} label="Production" />
               <TabButton id="revenue" icon={DollarSign} label="Revenue" />
               <TabButton id="warehouse" icon={Package} label="Warehouse" />
               <TabButton id="fleet" icon={Printer} label="Fleet ROI" />
-              <TabButton id="expenses" icon={Receipt} label="Vault" />
+              <TabButton id="expenses" icon={Receipt} label="Expenses" />
               <TabButton id="equity" icon={Wallet} label="Equity" />
               <TabButton id="mileage" icon={Car} label="Mileage" />
               <TabButton id="cogs" icon={Settings} label="Manufacturing" />
@@ -608,6 +811,7 @@ export default function App() {
             )}
 
             {activeTab === 'analytics' && <Analytics revenues={revenues} expenses={expenses} formatCurrency={formatCurrency} totalTrueProfit={totalTrueProfit} totalUnitsSold={totalUnitsSold} />}
+            {activeTab === 'production' && <ProductionBoard revenues={revenues} appSettings={appSettings} handleUpdateSettings={handleUpdateSettings} handleUpdateRecord={handleUpdateRecord} buildableUnits={buildableUnits} />}
             {activeTab === 'warehouse' && <Warehouse restocks={restocks} currentStock={currentStock} buildableUnits={buildableUnits} runoutDays={runoutDays} dailySalesVelocity={dailySalesVelocity} onAdd={(data) => handleAdd('restocks', data)} onDelete={(id) => handleDelete('restocks', id)} formatCurrency={formatCurrency} cogs={cogs} />}
             {activeTab === 'fleet' && <FleetCommand machines={machines} totalTrueProfit={totalTrueProfit} totalUnitsSold={totalUnitsSold} onAdd={(data) => handleAdd('machines', data)} onDelete={(id) => handleDelete('machines', id)} onUpdate={handleUpdateRecord} formatCurrency={formatCurrency} />}
             {activeTab === 'revenue' && <RevenueLog revenues={revenues} costPerTrainer={costPerTrainer} onAdd={(data) => handleAdd('revenues', data)} onUpdate={(id, data) => handleUpdateRecord('revenues', id, data)} onDelete={(id) => handleDelete('revenues', id)} formatCurrency={formatCurrency} />}
@@ -673,82 +877,134 @@ function QuickRevenueModal({ onClose, onAdd }) {
   );
 }
 
-function QuickExpenseModal({ onClose, onAdd, uploadReceipt }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Supplies', amount: '' });
-  const [file, setFile] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const categories = ['Supplies', 'Advertising', 'Travel', 'Equipment', 'Office'];
-  
-  const handleSubmit = async (e) => { 
-    e.preventDefault(); 
-    if(!formData.amount) return; 
-    setIsUploading(true);
-    let receiptUrl = '';
-    if (file) { receiptUrl = await uploadReceipt(file) || ''; }
-    onAdd({ ...formData, receiptUrl });
-    setIsUploading(false);
+function ProductionBoard({ revenues, appSettings, handleUpdateSettings, handleUpdateRecord, buildableUnits }) {
+  const finishedBuffer = Number(appSettings.finishedBuffer || 0);
+  const targetBuffer = Number(appSettings.targetBuffer || 6);
+
+  const activeOrders = useMemo(() => {
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    const cutoff = fiveDaysAgo.toISOString().split('T')[0];
+
+    return revenues.filter(r => {
+      // If explicitly shipped or archived, keep it off the board
+      if (r.fulfillmentStatus === 'shipped' || r.fulfillmentStatus === 'archived') return false;
+      // If explicitly queued, show it
+      if (r.fulfillmentStatus === 'new' || r.fulfillmentStatus === 'printing' || r.fulfillmentStatus === 'ready') return true;
+      // Auto-queue if new
+      if (!r.fulfillmentStatus && r.date >= cutoff && Number(r.qty) > 0) return true;
+      return false;
+    }).sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [revenues]);
+
+  const updateStatus = (id, newStatus) => {
+    handleUpdateRecord('revenues', id, { fulfillmentStatus: newStatus });
   };
 
+  const pullFromBuffer = (order) => {
+    if (finishedBuffer >= Number(order.qty || 1)) {
+      handleUpdateSettings({ ...appSettings, finishedBuffer: finishedBuffer - Number(order.qty || 1) });
+      updateStatus(order.id, 'shipped');
+    } else {
+      alert("Not enough fully assembled units in the safety buffer!");
+    }
+  };
+
+  const adjustBuffer = (amount) => {
+    const newTotal = Math.max(0, finishedBuffer + amount);
+    if (amount > 0 && buildableUnits < amount) {
+      alert("Not enough raw materials in the Warehouse to print this!");
+      return;
+    }
+    handleUpdateSettings({ ...appSettings, finishedBuffer: newTotal });
+  };
+
+  const newOrders = activeOrders.filter(r => !r.fulfillmentStatus || r.fulfillmentStatus === 'new');
+  const printingOrders = activeOrders.filter(r => r.fulfillmentStatus === 'printing');
+  const readyOrders = activeOrders.filter(r => r.fulfillmentStatus === 'ready');
+
   return (
-    <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
-          <h2 className="text-lg font-bold tracking-tight text-zinc-900">Log Expense</h2>
-          <button onClick={onClose} disabled={isUploading} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2.5 rounded-full"><X size={18}/></button>
+    <div className="space-y-6 animate-in fade-in">
+      <div className={`rounded-3xl border p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between shadow-lg transition-all duration-500 ${activeOrders.length > 0 ? 'bg-zinc-900 text-white border-zinc-800' : (finishedBuffer >= targetBuffer ? 'bg-emerald-50 border-emerald-200' : 'bg-blue-50 border-blue-200')}`}>
+        <div className="flex items-center mb-4 sm:mb-0">
+          <div className={`p-4 rounded-full mr-5 ${activeOrders.length > 0 ? 'bg-zinc-800 text-zinc-300' : (finishedBuffer >= targetBuffer ? 'bg-emerald-200 text-emerald-700' : 'bg-blue-200 text-blue-700')}`}>
+            <ShieldCheck size={32} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">The Safety Buffer</h2>
+            <p className={`text-sm font-medium mt-1 ${activeOrders.length > 0 ? 'text-zinc-400' : 'text-zinc-600'}`}>
+              {activeOrders.length > 0 
+                ? `${activeOrders.length} active orders pending. Fulfill these before printing for stock.` 
+                : (finishedBuffer >= targetBuffer 
+                  ? `Buffer is full. Your 72-hour window is completely secured.` 
+                  : `Printers are idle. Print ${targetBuffer - finishedBuffer} more units to secure your weekend.`)}
+            </p>
+          </div>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-            <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
+        
+        <div className="flex items-center space-x-6 bg-white/10 p-3 rounded-2xl backdrop-blur-sm border border-black/5">
+          <div className="flex flex-col items-center">
+            <span className={`text-[10px] font-bold uppercase tracking-widest mb-2 ${activeOrders.length > 0 ? 'text-zinc-400' : 'text-zinc-500'}`}>Target</span>
+            <div className="flex items-center space-x-2">
+              <button onClick={() => handleUpdateSettings({...appSettings, targetBuffer: Math.max(0, targetBuffer - 1)})} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>-</button>
+              <span className={`text-2xl font-bold w-8 text-center ${activeOrders.length > 0 ? 'text-white' : 'text-zinc-900'}`}>{targetBuffer}</span>
+              <button onClick={() => handleUpdateSettings({...appSettings, targetBuffer: targetBuffer + 1})} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>+</button>
+            </div>
           </div>
-          <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl">
-            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Attach Vault Receipt</label>
-            <input type="file" accept="image/*,application/pdf" onChange={e=>setFile(e.target.files[0])} className="w-full text-sm font-medium text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:uppercase file:tracking-wider file:bg-zinc-200 file:text-zinc-700 hover:file:bg-zinc-300 transition-colors cursor-pointer" />
+          <div className={`w-px h-12 ${activeOrders.length > 0 ? 'bg-zinc-700' : 'bg-zinc-200'}`}></div>
+          <div className="flex flex-col items-center">
+            <span className={`text-[10px] font-bold uppercase tracking-widest mb-2 ${activeOrders.length > 0 ? 'text-zinc-400' : 'text-zinc-500'}`}>On Shelf</span>
+            <div className="flex items-center space-x-2">
+              <button onClick={() => adjustBuffer(-1)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>-</button>
+              <span className={`text-2xl font-bold w-8 text-center ${activeOrders.length > 0 ? 'text-white' : 'text-zinc-900'}`}>{finishedBuffer}</span>
+              <button onClick={() => adjustBuffer(1)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${activeOrders.length > 0 ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-sm'}`}>+</button>
+            </div>
           </div>
-          <button type="submit" disabled={isUploading} className="w-full bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-400 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)] hover:-translate-y-0.5 flex justify-center items-center">
-            {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Vault...</> : "Save Expense"}
-          </button>
-        </form>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* Column 1: To Print */}
+        <div className="bg-zinc-50/80 backdrop-blur-sm rounded-3xl border border-zinc-200/60 p-5 flex flex-col h-full">
+          <div className="flex justify-between items-center mb-5 px-1">
+            <h3 className="font-bold text-zinc-900 flex items-center"><Inbox size={16} className="mr-2 text-zinc-400"/> To Print</h3>
+            <span className="bg-zinc-200 text-zinc-700 text-xs font-bold px-2.5 py-1 rounded-full">{newOrders.length}</span>
+          </div>
+          <div className="flex-1 space-y-4">
+            {newOrders.map(order => <OrderCard key={order.id} order={order} status="new" finishedBuffer={finishedBuffer} onUpdateStatus={updateStatus} onPullFromBuffer={pullFromBuffer} />)}
+            {newOrders.length === 0 && <div className="text-center py-10 text-zinc-400 text-sm font-medium border-2 border-dashed border-zinc-200 rounded-2xl">No pending orders.<br/><span className="text-xs font-normal mt-1 opacity-70 block">You can push older orders to the board<br/>from your Revenue Ledger.</span></div>}
+          </div>
+        </div>
+
+        {/* Column 2: Printing */}
+        <div className="bg-blue-50/50 backdrop-blur-sm rounded-3xl border border-blue-100/60 p-5 flex flex-col h-full">
+          <div className="flex justify-between items-center mb-5 px-1">
+            <h3 className="font-bold text-blue-900 flex items-center"><Settings size={16} className="mr-2 text-blue-500 animate-[spin_4s_linear_infinite]"/> Printing</h3>
+            <span className="bg-blue-200 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">{printingOrders.length}</span>
+          </div>
+          <div className="flex-1 space-y-4">
+            {printingOrders.map(order => <OrderCard key={order.id} order={order} status="printing" finishedBuffer={finishedBuffer} onUpdateStatus={updateStatus} onPullFromBuffer={pullFromBuffer} />)}
+            {printingOrders.length === 0 && <div className="text-center py-10 text-blue-300 text-sm font-medium border-2 border-dashed border-blue-100 rounded-2xl">Printers are idle.</div>}
+          </div>
+        </div>
+
+        {/* Column 3: Ready to Ship */}
+        <div className="bg-emerald-50/50 backdrop-blur-sm rounded-3xl border border-emerald-100/60 p-5 flex flex-col h-full">
+          <div className="flex justify-between items-center mb-5 px-1">
+            <h3 className="font-bold text-emerald-900 flex items-center"><Package size={16} className="mr-2 text-emerald-500"/> Assembly / Pack</h3>
+            <span className="bg-emerald-200 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">{readyOrders.length}</span>
+          </div>
+          <div className="flex-1 space-y-4">
+            {readyOrders.map(order => <OrderCard key={order.id} order={order} status="ready" finishedBuffer={finishedBuffer} onUpdateStatus={updateStatus} onPullFromBuffer={pullFromBuffer} />)}
+            {readyOrders.length === 0 && <div className="text-center py-10 text-emerald-300 text-sm font-medium border-2 border-dashed border-emerald-100 rounded-2xl">Nothing waiting to pack.</div>}
+          </div>
+        </div>
+
       </div>
     </div>
   );
 }
-
-function QuickEquityModal({ onClose, onAdd }) {
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], desc: '', category: 'Amex Transfer (Op Cash)', amount: '' });
-  const categories = ['Recoup Investment', 'Golf Fund', 'Amex Transfer (Op Cash)', 'Other Draw'];
-  const handleSubmit = (e) => { e.preventDefault(); if(formData.amount) onAdd(formData); };
-  return (
-    <div className="fixed inset-0 bg-zinc-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-spring-in border border-zinc-200/50">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
-          <h2 className="text-lg font-bold tracking-tight text-zinc-900">Transfer Funds</h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 transition-colors bg-zinc-100 hover:bg-zinc-200 p-2.5 rounded-full"><X size={18}/></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Date</label><input type="date" className={modalInputStyle} value={formData.date} onChange={e=>setFormData({...formData, date:e.target.value})} required/></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Description</label><input type="text" className={modalInputStyle} value={formData.desc} onChange={e=>setFormData({...formData, desc:e.target.value})} required/></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Category</label><select className={modalInputStyle} value={formData.category} onChange={e=>setFormData({...formData, category:e.target.value})}>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-          <div><label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Amount ($)</label><input type="number" step="0.01" className={modalInputStyle} value={formData.amount} onChange={e=>setFormData({...formData, amount:e.target.value})} required/></div>
-          <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3.5 px-4 rounded-2xl mt-4 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.15)] hover:-translate-y-0.5">Log Transfer</button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// --- US TILE MAP DATA ---
-const tileMapData = [
-  { code: 'AK', c: 0, r: 0 }, { code: 'ME', c: 11, r: 0 },
-  { code: 'WA', c: 1, r: 1 }, { code: 'ID', c: 2, r: 1 }, { code: 'MT', c: 3, r: 1 }, { code: 'ND', c: 4, r: 1 }, { code: 'MN', c: 5, r: 1 }, { code: 'WI', c: 6, r: 1 }, { code: 'MI', c: 7, r: 1 }, { code: 'NY', c: 9, r: 1 }, { code: 'VT', c: 10, r: 1 }, { code: 'NH', c: 11, r: 1 },
-  { code: 'OR', c: 1, r: 2 }, { code: 'NV', c: 2, r: 2 }, { code: 'WY', c: 3, r: 2 }, { code: 'SD', c: 4, r: 2 }, { code: 'IA', c: 5, r: 2 }, { code: 'IL', c: 6, r: 2 }, { code: 'IN', c: 7, r: 2 }, { code: 'OH', c: 8, r: 2 }, { code: 'PA', c: 9, r: 2 }, { code: 'NJ', c: 10, r: 2 }, { code: 'MA', c: 11, r: 2 },
-  { code: 'CA', c: 1, r: 3 }, { code: 'UT', c: 2, r: 3 }, { code: 'CO', c: 3, r: 3 }, { code: 'NE', c: 4, r: 3 }, { code: 'MO', c: 5, r: 3 }, { code: 'KY', c: 6, r: 3 }, { code: 'WV', c: 7, r: 3 }, { code: 'VA', c: 8, r: 3 }, { code: 'MD', c: 9, r: 3 }, { code: 'CT', c: 10, r: 3 }, { code: 'RI', c: 11, r: 3 },
-  { code: 'AZ', c: 2, r: 4 }, { code: 'NM', c: 3, r: 4 }, { code: 'KS', c: 4, r: 4 }, { code: 'AR', c: 5, r: 4 }, { code: 'TN', c: 6, r: 4 }, { code: 'NC', c: 7, r: 4 }, { code: 'SC', c: 8, r: 4 }, { code: 'DE', c: 9, r: 4 }, { code: 'DC', c: 10, r: 4 },
-  { code: 'OK', c: 4, r: 5 }, { code: 'LA', c: 5, r: 5 }, { code: 'MS', c: 6, r: 5 }, { code: 'AL', c: 7, r: 5 }, { code: 'GA', c: 8, r: 5 },
-  { code: 'HI', c: 0, r: 6 }, { code: 'TX', c: 4, r: 6 }, { code: 'FL', c: 8, r: 6 }
-];
 
 function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalUnitsSold }) {
   const [demandTimeframe, setDemandTimeframe] = useState('lifetime');
@@ -771,22 +1027,6 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
   }, [revenues, expenses]);
 
   const maxBarValue = Math.max(10, ...monthlyData.map(d => Math.max(d.rev, d.exp)));
-
-  const categoryData = useMemo(() => {
-    const totals = {}; let grandTotal = 0;
-    expenses.forEach(e => {
-      const amt = Number(e.amount || 0);
-      totals[e.category] = (totals[e.category] || 0) + amt;
-      grandTotal += amt;
-    });
-    const colors = { 'Supplies': '#3b82f6', 'Advertising': '#f59e0b', 'Travel': '#10b981', 'Equipment': '#8b5cf6', 'Office': '#ef4444' };
-    let currentOffset = 0;
-    return Object.keys(totals).map(cat => {
-      const pct = grandTotal > 0 ? (totals[cat] / grandTotal) * 100 : 0;
-      const offset = currentOffset; currentOffset += pct;
-      return { category: cat, amount: totals[cat], pct, offset, color: colors[cat] || '#e2e8f0' };
-    }).sort((a, b) => b.amount - a.amount);
-  }, [expenses]);
 
   const { stateData, maxStateRevenue } = useMemo(() => {
     const stateRevenues = {};
@@ -814,7 +1054,6 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
     return arr;
   }, []);
 
-  // --- DAY OF WEEK DEMAND ANALYSIS ---
   const { dayOfWeekData, maxDayUnits, bestDay } = useMemo(() => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const counts = [0, 0, 0, 0, 0, 0, 0];
@@ -850,7 +1089,6 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
     return { dayOfWeekData: parsedData, maxDayUnits: maxUnits, bestDay: best };
   }, [revenues, demandTimeframe]);
 
-  // --- APEX AI FORECASTING (Einstein) ---
   const forecastData = useMemo(() => {
     const now = new Date();
     const thirtyDaysAgo = new Date(new Date().setDate(now.getDate() - 30)).toISOString().split('T')[0];
@@ -873,7 +1111,6 @@ function Analytics({ revenues, expenses, formatCurrency, totalTrueProfit, totalU
     return { current30Rev, prev30Rev, projectedNext30Rev, projectedNext30Units, momGrowth };
   }, [revenues]);
 
-  // --- CAC VS LTV ENGINE ---
   const cacData = useMemo(() => {
     const expAdSpend = expenses.filter(e => e.category === 'Advertising').reduce((sum, e) => sum + Number(e.amount || 0), 0);
     const revAdSpend = revenues.reduce((sum, r) => sum + Number(r.ad || 0), 0);
@@ -1141,57 +1378,6 @@ function Warehouse({ restocks, currentStock, buildableUnits, runoutDays, dailySa
     });
   };
 
-  const StockCard = ({ title, materialName, amount, unit, isWarning, daysRemaining, velocity, onAdjust }) => {
-    const cleanAmount = Number.isInteger(amount) ? amount : Number(Number(amount).toFixed(2));
-    const [isEditing, setIsEditing] = useState(false);
-    const [editVal, setEditVal] = useState(cleanAmount);
-
-    useEffect(() => {
-      if (!isEditing) setEditVal(Number.isInteger(amount) ? amount : Number(Number(amount).toFixed(2)));
-    }, [amount, isEditing]);
-
-    const handleSave = () => {
-      const diff = Number(editVal) - cleanAmount;
-      if (diff !== 0) {
-        onAdjust(materialName, diff);
-      }
-      setIsEditing(false);
-    };
-
-    return (
-      <div className={`rounded-3xl border p-6 flex flex-col justify-center transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] group ${isWarning ? 'bg-amber-50/50 border-amber-200/60' : 'bg-white/80 backdrop-blur-md border-zinc-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]'}`}>
-        <div className="flex justify-between items-start">
-          <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest flex items-center">
-            {title} {isWarning && <AlertTriangle size={14} className="text-amber-500 ml-1" />}
-          </h3>
-          {!isEditing && (
-            <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" title="Audit/Adjust Inventory">
-              <Edit2 size={14} />
-            </button>
-          )}
-        </div>
-        
-        {isEditing ? (
-          <div className="mt-3 flex items-center space-x-2 animate-in fade-in zoom-in-95">
-            <input type="number" step="any" className="w-20 sm:w-24 border border-zinc-300 rounded-lg px-2 py-1.5 text-lg font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white" value={editVal} onChange={e => setEditVal(e.target.value)} autoFocus />
-            <button onClick={handleSave} className="bg-emerald-600 text-white p-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"><Check size={16} /></button>
-            <button onClick={() => setIsEditing(false)} className="bg-zinc-100 text-zinc-500 p-2 rounded-lg hover:bg-zinc-200 transition-colors"><X size={16} /></button>
-          </div>
-        ) : (
-          <div className={`text-3xl font-bold tracking-tighter mt-3 ${isWarning ? 'text-amber-700' : 'text-zinc-900'}`}>
-            {cleanAmount.toLocaleString()} <span className="text-sm font-medium tracking-normal text-zinc-400 ml-1">{unit}</span>
-          </div>
-        )}
-
-        {velocity > 0 && !isEditing && (
-          <div className={`text-[11px] mt-3 font-bold uppercase tracking-wider ${daysRemaining <= 7 ? 'text-amber-600' : 'text-zinc-400'}`}>
-            {daysRemaining > 0 && daysRemaining !== Infinity ? `~${daysRemaining} days remaining` : (daysRemaining === 0 ? 'Out of stock' : 'Adequate supply')}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
     <div className="space-y-8 animate-in fade-in">
       <div className={`rounded-[2.5rem] p-10 flex flex-col sm:flex-row sm:items-center justify-between relative overflow-hidden transition-all duration-500 shadow-xl ${buildableUnits < 10 ? 'bg-amber-100 text-amber-900' : 'bg-white/90 backdrop-blur-md border border-zinc-200 text-zinc-900 shadow-[0_8px_30px_rgb(0,0,0,0.06)]'}`}>
@@ -1375,47 +1561,6 @@ function FleetCommand({ machines, totalTrueProfit, totalUnitsSold, onAdd, onDele
   );
 }
 
-function ProgressCard({ drawsRecoup, initialGoal, remainingToRecoup, formatCurrency, onUpdateGoal }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [tempGoal, setTempGoal] = useState(initialGoal);
-  const handleSave = () => { onUpdateGoal(Number(tempGoal)); setIsEditing(false); };
-  const percentComplete = initialGoal > 0 ? Math.min(100, (drawsRecoup / initialGoal) * 100) : 100;
-
-  return (
-    <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] flex flex-col justify-center relative group hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all">
-      <div className="absolute top-6 right-6">
-        {!isEditing && <button onClick={() => setIsEditing(true)} className="text-zinc-300 hover:text-zinc-900 transition-colors p-1 opacity-0 group-hover:opacity-100" title="Edit Initial Goal"><Edit2 size={16} /></button>}
-      </div>
-      <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Remaining to Recoup</h3>
-      <div className="text-3xl sm:text-4xl font-bold tracking-tighter text-zinc-900 mb-2">
-        <AnimatedNumber value={remainingToRecoup} formatCurrency={formatCurrency} />
-      </div>
-      <div className="w-full bg-zinc-100 rounded-full h-1.5 mt-5 overflow-hidden"><div className="bg-zinc-900 h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${percentComplete}%` }}></div></div>
-      {isEditing ? (
-        <div className="flex items-center space-x-3 mt-5 bg-zinc-50 p-2 rounded-xl border border-zinc-200">
-          <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest ml-2">Goal $</span>
-          <input type="number" className="border-none bg-transparent w-24 text-sm font-semibold outline-none text-zinc-900" value={tempGoal} onChange={(e) => setTempGoal(e.target.value)} />
-          <button onClick={handleSave} className="bg-zinc-900 text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"><Check size={14} /></button>
-        </div>
-      ) : <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-400 mt-4">{percentComplete.toFixed(0)}% to {formatCurrency(initialGoal)} goal</p>}
-    </div>
-  );
-}
-
-function DashboardCard({ title, amount, subtitle, color, isNegative, highlight, formatCurrency }) {
-  const colorMap = { blue: 'text-blue-600', red: 'text-zinc-900', emerald: 'text-emerald-600', zinc: 'text-zinc-900', indigo: 'text-zinc-900' };
-  return (
-    <div className={`bg-white/80 backdrop-blur-md rounded-3xl p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] ${highlight ? 'ring-1 ring-zinc-200/60' : 'border border-zinc-100'}`}>
-      <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{title}</h3>
-      <div className={`text-3xl sm:text-4xl font-bold tracking-tighter mt-3 ${colorMap[color]}`}>
-        {isNegative && amount > 0 ? '-' : ''}
-        <AnimatedNumber value={amount} formatCurrency={formatCurrency} />
-      </div>
-      <p className="text-sm font-medium text-zinc-400 mt-2">{subtitle}</p>
-    </div>
-  );
-}
-
 function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, formatCurrency }) {
   const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', salesTax: '', ebay: '', ad: '', shipping: '', state: '' });
   const [importPreview, setImportPreview] = useState(null);
@@ -1442,12 +1587,18 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
     setFormData({ date: new Date().toISOString().split('T')[0], orderNum: '', desc: '', qty: 1, gross: '', salesTax: '', ebay: '', ad: '', shipping: '', state: '' }); 
     setShowFees(false);
   };
+  
   const startEdit = (item) => { setEditingId(item.id); setEditForm({ ...item }); };
   const saveEdit = () => { onUpdate(editingId, editForm); setEditingId(null); };
+  
   const handleExport = () => {
     const headers = ['Date', 'Order #', 'State', 'Description', 'Qty', 'Total Paid (Gross)', 'Sales Tax', 'eBay Fee', 'Ad Fee', 'Shipping', 'Net Payout', 'True Profit', 'Margin %'];
     const data = sortedRevenues.map(r => [r.date, r.orderNum, r.state, r.desc, r.qty, r.gross, r.salesTax || 0, r.ebay || 0, r.ad || 0, r.shipping || 0, r.net, r.trueProfit, r.margin.toFixed(1)]);
     exportToCsv('Apex_Revenues.csv', [headers, ...data]);
+  };
+
+  const handleUpdateField = (id, field, value) => {
+    setImportPreview(prev => prev.map(pr => pr.id === id ? { ...pr, [field]: value } : pr));
   };
 
   const handleFileUpload = (e) => {
@@ -1459,7 +1610,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       const parsed = parseCSV(text);
       let headerIdx = 0;
       
-      // Find the header row (Financial or Standard Format)
       while(headerIdx < parsed.length && (!parsed[headerIdx] || !parsed[headerIdx].some(h => h && (h.includes('Order Number') || h.includes('Order number'))))) {
         headerIdx++;
       }
@@ -1472,7 +1622,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       const headers = parsed[headerIdx];
       const findHeader = (str) => headers.findIndex(h => h && h.toLowerCase().includes(str.toLowerCase()));
       
-      // Identify all possible columns
       const dateIdx = findHeader('Transaction creation date') > -1 ? findHeader('Transaction creation date') : findHeader('Sale Date'); 
       const orderIdx = findHeader('Order number');
       const typeIdx = findHeader('Type'); 
@@ -1489,7 +1638,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       const netIdx = findHeader('Net amount');
       const descColIdx = findHeader('Description');
 
-      // Dynamically find ALL fee columns, explicitly targeting Final Value Fees
       const feeIndices = new Set();
       headers.forEach((h, idx) => {
         const headerStr = (h || '').toLowerCase();
@@ -1498,7 +1646,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         }
       });
       
-      // Explicit fallbacks for known exact columns just to be 100% certain
       const specificFeeCols = ['Final Value Fee - variable', 'Final Value Fee - fixed', 'Regulatory operating fee', 'International fee'];
       specificFeeCols.forEach(feeName => {
          const idx = findHeader(feeName);
@@ -1507,7 +1654,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
 
       const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
       
-      // FINANCIAL AGGREGATOR MAP
       const ordersMap = new Map();
 
       for (let i = headerIdx + 1; i < parsed.length; i++) {
@@ -1515,7 +1661,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         if (row.length < headers.length) continue;
         
         let orderNum = row[orderIdx] ? row[orderIdx].trim() : '';
-        // Handle unattached shipping labels and fees
         if (!orderNum || orderNum.startsWith('--')) {
            const refIdx = findHeader('Reference ID');
            let refId = refIdx > -1 ? row[refIdx] : '';
@@ -1524,7 +1669,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         }
 
         const type = typeIdx > -1 ? (row[typeIdx] || '').toLowerCase() : 'order';
-        if (type === 'payout' || type === 'transfer') continue; // Ignore bank transfers
+        if (type === 'payout' || type === 'transfer') continue; 
         
         if (!ordersMap.has(orderNum)) {
           ordersMap.set(orderNum, {
@@ -1535,7 +1680,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         
         const rec = ordersMap.get(orderNum);
         
-        // Bulletproof Number Parser (Handles accounting formats like "(5.99)", missing signs, and dashes)
         const cleanNum = (val) => {
           if (!val) return 0;
           if (typeof val === 'number') return val;
@@ -1554,28 +1698,23 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
         let rowQty = qtyIdx > -1 ? cleanNum(row[qtyIdx]) : 0;
         
         let sumFees = 0;
-        // Absolute value ensures negative/positive fees stack correctly as a positive total expense
         feeIndices.forEach(idx => sumFees += Math.abs(cleanNum(row[idx])));
 
         const desc = descColIdx > -1 ? (row[descColIdx] || '').trim() : '';
         const title = titleIdx > -1 ? (row[titleIdx] || '').trim() : '';
         
-        // Ensure eBay's empty "--" cells don't lock in as descriptions
         const cleanTitle = title === '--' ? '' : title;
         const cleanDesc = desc === '--' ? '' : desc;
 
-        // Synthesize true gross if this is the financial report format 
-        // (eBay excludes tax from Gross in financial reports, but our UI expects it for absolute Total Paid)
         let isFinancialGross = headers[grossIdx] && headers[grossIdx].toLowerCase() === 'gross transaction amount';
         let adjustedGross = isFinancialGross ? rawGross + rawTax : rawGross;
 
-        // 1. Populate Core Information
         if (type.includes('order') || type === 'sale' || !rec.date) {
           if (row[dateIdx] && !rec.date && row[dateIdx] !== '--') {
             const rawDate = row[dateIdx];
             const d = new Date(rawDate);
             if (!isNaN(d.getTime())) {
-               rec.date = d.toLocaleDateString('en-CA'); // strict YYYY-MM-DD
+               rec.date = d.toLocaleDateString('en-CA');
             } else {
                const parts = rawDate.split('-');
                if (parts.length === 3) rec.date = `20${parts[2]}-${months[parts[0]] || '01'}-${parts[1].padStart(2, '0')}`;
@@ -1591,7 +1730,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
           if (rowQty > 0 && (type.includes('order') || type === 'sale')) rec.qty += rowQty;
         }
 
-        // 2. Aggregate Financial Splits
         if (type.includes('shipping label')) {
           rec.shipping += Math.abs(rawNet || rawGross);
           if(!rec.desc || rec.desc === '--') rec.desc = 'Shipping Label';
@@ -1599,14 +1737,13 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
           rec.ad += Math.abs(rawNet || sumFees || rawGross);
           if(!rec.desc || rec.desc === '--') rec.desc = 'Ad Fee / Other';
         } else if (type.includes('refund')) {
-          rec.gross += adjustedGross; // rawGross is negative on refunds, so this properly subtracts
+          rec.gross += adjustedGross; 
           rec.salesTax -= Math.abs(rawTax);
-          rec.ebay -= Math.abs(sumFees); // Fees credited back, reduce expenses
+          rec.ebay -= Math.abs(sumFees); 
         } else {
-          // Standard Order
           rec.gross += adjustedGross;
           rec.salesTax += Math.abs(rawTax); 
-          rec.ebay += Math.abs(sumFees); // Fees are usually negative in CSV, we log them as positive expenses
+          rec.ebay += Math.abs(sumFees); 
           if (!rec.desc || rec.desc === 'Shipping Label' || rec.desc === 'Ad Fee / Other' || rec.desc === '--') {
              rec.desc = cleanTitle || cleanDesc || 'eBay Sale';
           }
@@ -1617,7 +1754,6 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
       let unchangedCount = 0;
       let updatedCount = 0;
 
-      // Smart Sync Engine
       let index = 0;
       for (const [orderNum, rec] of ordersMap.entries()) {
         const existingRecord = revenues.find(r => r.orderNum === orderNum);
@@ -1709,24 +1845,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
                       <tr><td colSpan="9" className="p-8 text-center text-zinc-500 font-medium">No updates or new records needed. Ledger is perfectly in sync!</td></tr>
                     ) : (
                       importPreview.map(r => (
-                        <tr key={r.id} className="hover:bg-zinc-50/50">
-                          <td className="px-6 py-3 font-medium text-zinc-500">{r.date}</td>
-                          <td className="px-6 py-3 font-mono text-[11px] text-zinc-500 flex items-center">
-                            {r.isUpdate ? (
-                              <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded mr-2 font-bold text-[9px] shadow-sm">OVERWRITE</span>
-                            ) : (
-                              <span className="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded mr-2 font-bold text-[9px] shadow-sm">NEW</span>
-                            )}
-                            {r.orderNum}
-                          </td>
-                          <td className="px-6 py-3 truncate max-w-xs font-medium text-zinc-900" title={r.desc}>{r.desc}</td>
-                          <td className="px-6 py-3 text-center font-bold text-zinc-900">{r.qty}</td>
-                          <td className="px-6 py-3 text-right font-semibold">{formatCurrency(r.gross)}</td>
-                          <td className="px-6 py-3 text-right font-medium text-zinc-500">{formatCurrency(r.salesTax)}</td>
-                          <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.ebay} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ebay: e.target.value } : pr))}/></td>
-                          <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.ad} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, ad: e.target.value } : pr))}/></td>
-                          <td className="px-3 py-2"><input type="number" step="0.01" className="w-20 bg-zinc-50 border border-zinc-200 rounded-lg p-2 outline-none focus:border-zinc-900 focus:bg-white text-sm" value={r.shipping} onChange={e => setImportPreview(prev => prev.map(pr => pr.id === r.id ? { ...pr, shipping: e.target.value } : pr))}/></td>
-                        </tr>
+                        <PreviewRow key={r.id} r={r} formatCurrency={formatCurrency} onUpdateField={handleUpdateField} />
                       ))
                     )}
                   </tbody>
@@ -1797,7 +1916,7 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
                 <SortableHeader label="Net" sortKey="net" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-blue-600" />
                 <SortableHeader label="True Profit" sortKey="trueProfit" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-emerald-600" />
                 <SortableHeader label="Margin" sortKey="margin" currentSort={sortConfig} requestSort={requestSort} alignRight textColor="text-emerald-600" />
-                <th className="px-6 py-4"></th>
+                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-zinc-400 text-center select-none">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-50">
@@ -1830,7 +1949,12 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
                 ) : (
                   <tr key={r.id} className="hover:bg-zinc-50/50 transition-colors group">
                     <td className="px-6 py-4 font-medium text-zinc-500">{r.date}</td>
-                    <td className="px-6 py-4 text-zinc-400 font-mono text-[10px] tracking-wider">{r.orderNum || '-'}</td>
+                    <td className="px-6 py-4 text-zinc-400 font-mono text-[10px] tracking-wider flex flex-wrap items-center gap-1.5 min-w-[120px]">
+                      {r.fulfillmentStatus === 'shipped' && <span className="text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded font-bold" title="Shipped">SHIPPED</span>}
+                      {r.fulfillmentStatus === 'archived' && <span className="text-zinc-500 bg-zinc-100 border border-zinc-200 px-1.5 py-0.5 rounded font-bold" title="Archived / Removed from Queue">ARCHIVED</span>}
+                      {(r.fulfillmentStatus === 'new' || r.fulfillmentStatus === 'printing' || r.fulfillmentStatus === 'ready') && <span className="text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded font-bold" title="In Production Queue">QUEUED</span>}
+                      <span className="truncate">{r.orderNum || '-'}</span>
+                    </td>
                     <td className="px-6 py-4 font-bold text-zinc-900 text-xs">{r.state || '-'}</td>
                     <td className="px-6 py-4 truncate max-w-[200px] font-semibold text-zinc-800" title={r.desc}>{r.desc}</td>
                     <td className="px-6 py-4 text-center font-bold text-zinc-900">{r.qty}</td>
@@ -1839,9 +1963,18 @@ function RevenueLog({ revenues, costPerTrainer, onAdd, onUpdate, onDelete, forma
                     <td className="px-6 py-4 text-right font-semibold text-blue-600">{formatCurrency(r.net)}</td>
                     <td className="px-6 py-4 text-right font-bold text-emerald-600 tracking-tight">{formatCurrency(r.trueProfit)}</td>
                     <td className="px-6 py-4 text-right font-bold text-emerald-600 tracking-tight">{r.margin.toFixed(0)}%</td>
-                    <td className="px-6 py-4 text-right space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => startEdit(r)} className="text-zinc-400 hover:text-zinc-900"><Edit2 size={16} /></button>
-                      <button onClick={() => onDelete(r.id)} className="text-zinc-300 hover:text-red-500"><Trash2 size={16} /></button>
+                    <td className="px-6 py-4 text-right space-x-2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                      {(!r.fulfillmentStatus || r.fulfillmentStatus === 'archived' || r.fulfillmentStatus === 'shipped') ? (
+                        <button onClick={() => handleUpdateRecord('revenues', r.id, { fulfillmentStatus: 'new' })} className="text-blue-500 hover:text-white hover:bg-blue-500 bg-blue-50 p-1.5 rounded-lg transition-colors" title="Send to Production Queue">
+                          <Inbox size={14} />
+                        </button>
+                      ) : (
+                        <button onClick={() => handleUpdateRecord('revenues', r.id, { fulfillmentStatus: 'archived' })} className="text-rose-500 hover:text-white hover:bg-rose-500 bg-rose-50 p-1.5 rounded-lg transition-colors" title="Remove from Production Queue">
+                          <X size={14} />
+                        </button>
+                      )}
+                      <button onClick={() => startEdit(r)} className="text-zinc-400 hover:text-zinc-900 bg-zinc-50 hover:bg-zinc-100 p-1.5 rounded-lg transition-colors" title="Edit Record"><Edit2 size={14} /></button>
+                      <button onClick={() => onDelete(r.id)} className="text-zinc-400 hover:text-red-500 bg-zinc-50 hover:bg-red-50 p-1.5 rounded-lg transition-colors" title="Delete Record"><Trash2 size={14} /></button>
                     </td>
                   </tr>
                 );
@@ -1887,7 +2020,7 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency, u
   return (
     <div className="space-y-8 animate-in fade-in">
       <div className="bg-white/80 backdrop-blur-md rounded-3xl border border-zinc-100 p-8 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.03)]">
-        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Expense to Vault</h2>
+        <h2 className="text-lg font-bold tracking-tight text-zinc-900 mb-6">Log Expense</h2>
         <form onSubmit={addRow} className="grid grid-cols-1 sm:grid-cols-5 gap-4">
           <input type="date" className={`${inlineInputStyle} col-span-1`} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
           <input type="text" placeholder="Description" className={`${inlineInputStyle} col-span-1`} value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})} required />
@@ -1895,7 +2028,7 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency, u
           <input type="number" step="0.01" placeholder="Amount ($)" className={`${inlineInputStyle} col-span-1`} value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
           <input type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files[0])} className="col-span-1 text-[10px] uppercase font-bold tracking-wider text-zinc-500 file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:uppercase file:tracking-wider file:font-bold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 transition-colors cursor-pointer" />
           <button type="submit" disabled={isUploading} className="sm:col-span-5 bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-300 text-white font-semibold py-3.5 px-4 rounded-xl flex items-center justify-center transition-all hover:-translate-y-0.5 mt-2 shadow-md">
-             {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading to Vault...</> : <><Plus size={18} className="mr-2" /> Save to Ledger & Vault</>}
+             {isUploading ? <><Loader2 size={18} className="animate-spin mr-2"/> Uploading Receipt...</> : <><Plus size={18} className="mr-2" /> Save Expense</>}
           </button>
         </form>
       </div>
@@ -1919,7 +2052,7 @@ function ExpenseTracker({ expenses, onAdd, onUpdate, onDelete, formatCurrency, u
             </thead>
             <tbody className="divide-y divide-zinc-50">
               {sortedExpenses.length === 0 ? (
-                <EmptyState icon={Receipt} title="Your vault is empty" message="Log your first expense to activate tax tracking and secure digital receipts." colSpan="6" />
+                <EmptyState icon={Receipt} title="No expenses logged" message="Log your first expense to activate tax tracking and secure digital receipts." colSpan="6" />
               ) : sortedExpenses.map(e => (
                 editingId === e.id ? (
                   <tr key={e.id} className="bg-blue-50/30">
